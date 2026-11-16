@@ -24,14 +24,14 @@ Pick an adaptation of Jekyll and Hyde, read or watch it, then make a slideshow t
 - [x] Theme(s): similarities and differences (slide 7)
 - [x] Title slide (slide 1)
 - [x] Headings on each slide (all 9)
-- [x] Images (book covers, author photo, Doré engravings, Mansfield photo, icons)
+- [x] Images (book covers, author photo, Doré engravings, Mansfield photo)
 - [x] Works cited slide (slide 9, MLA)
 
 Extra: "The Two Stories" summary (slide 2) and "Conclusion" (slide 8). Speaker notes on every slide.
 
 ## Rubric check
 
-- **All required info, accurate:** every element has a "Both" box (similarities) and side-by-side differences. Facts and quotes were checked against the full texts (see `Research/sources.md`).
+- **All required info, accurate:** every element has a Similarities list and a Differences list. Facts and quotes were checked against the full texts (see `Research/sources.md`).
 - **Unit info plus online research:** uses the novella itself plus research on the adaptation, images and history.
 - **Organized and good-looking:** simple, clean design. White background, and every comparison slide uses the same layout: Similarities and Differences as bullet points, with one picture on the right.
 - **Text, graphics and images balanced:** every slide except Works Cited has a picture.
