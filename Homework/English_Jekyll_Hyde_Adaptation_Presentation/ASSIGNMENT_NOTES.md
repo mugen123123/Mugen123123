@@ -27,14 +27,14 @@ Pick an adaptation of Jekyll and Hyde, read or watch it, then make a slideshow t
 - [x] Images (book covers, author photo, Doré engravings, Mansfield photo, icons)
 - [x] Works cited slide (slide 9, MLA)
 
-Extra: "The Two Stories" summary (slide 2) and "Final Thoughts" (slide 8). Speaker notes on every slide.
+Extra: "The Two Stories" summary (slide 2) and "Conclusion" (slide 8). Speaker notes on every slide.
 
 ## Rubric check
 
 - **All required info, accurate:** every element has a "Both" box (similarities) and side-by-side differences. Facts and quotes were checked against the full texts (see `Research/sources.md`).
 - **Unit info plus online research:** uses the novella itself plus research on the adaptation, images and history.
-- **Organized and good-looking:** the same layout on every slide, with color coding (red = Jekyll & Hyde, teal = Invisible Man, gold = both).
-- **Text, graphics and images balanced:** every slide has an image or graphic.
+- **Organized and good-looking:** simple, clean design. White background, and every comparison slide uses the same layout: Similarities and Differences as bullet points, with one picture on the right.
+- **Text, graphics and images balanced:** every slide except Works Cited has a picture.
 - **Spelling and grammar:** checked.
 
 ## Open items for me
