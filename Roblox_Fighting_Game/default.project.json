@@ -1,0 +1,17 @@
+{
+  "name": "NeonKnockout",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "FightConfig": { "$path": "src/shared/FightConfig.lua" }
+    },
+    "ServerScriptService": {
+      "FightServer": { "$path": "src/server/FightServer.server.lua" }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "FightClient": { "$path": "src/client/FightClient.client.lua" }
+      }
+    }
+  }
+}
