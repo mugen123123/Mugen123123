@@ -1,0 +1,17 @@
+{
+  "name": "SilentContract",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "StealthConfig": { "$path": "src/shared/StealthConfig.lua" }
+    },
+    "ServerScriptService": {
+      "StealthServer": { "$path": "src/server/StealthServer.server.lua" }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "StealthClient": { "$path": "src/client/StealthClient.client.lua" }
+      }
+    }
+  }
+}
