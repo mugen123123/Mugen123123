@@ -10,6 +10,7 @@ local Lighting = game:GetService("Lighting")
 
 local Config = require(ReplicatedStorage:WaitForChild("StealthConfig"))
 local LevelDef = Config.Level
+local Props = require(script.Parent:WaitForChild("StealthProps"))
 
 local VIEW_COS = math.cos(math.rad(Config.VIEW_HALF_ANGLE))
 local CHASE_COS = math.cos(math.rad(80)) -- a guard who is chasing you sees much wider
@@ -36,6 +37,50 @@ local FxRemote = makeRemote("Fx")             -- server -> client: (effectName, 
 remotes.Parent = ReplicatedStorage
 
 ---------------------------------------------------------------------------
+-- Guard character models
+---------------------------------------------------------------------------
+-- Real Roblox character rigs for the guards and the target. Each player's client copies
+-- these, dresses them and animates them. The server only tracks where guards are.
+local rigs = Instance.new("Folder")
+rigs.Name = "StealthRigs"
+rigs.Parent = ReplicatedStorage
+
+local function makeRigTemplate(name, skin, suit, trousers)
+	task.spawn(function()
+		local desc = Instance.new("HumanoidDescription")
+		desc.HeadColor = skin
+		desc.TorsoColor = suit
+		desc.LeftArmColor = suit
+		desc.RightArmColor = suit
+		desc.LeftLegColor = trousers
+		desc.RightLegColor = trousers
+		local ok, rig = pcall(function()
+			return Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15)
+		end)
+		if ok and rig then
+			rig.Name = name
+			for _, d in ipairs(rig:GetDescendants()) do
+				if d:IsA("LuaSourceContainer") then
+					d:Destroy()
+				end
+			end
+			rig.Parent = rigs
+		else
+			warn("Could not make " .. name .. ": " .. tostring(rig))
+		end
+	end)
+end
+makeRigTemplate("GuardRig", Color3.fromRGB(222, 184, 156), Color3.fromRGB(30, 36, 56), Color3.fromRGB(18, 19, 24))
+makeRigTemplate("TargetRig", Color3.fromRGB(232, 196, 170), Color3.fromRGB(128, 22, 32), Color3.fromRGB(24, 20, 22))
+
+-- Guard characters are only for looks, so they must never bump into players.
+pcall(function()
+	local PhysicsService = game:GetService("PhysicsService")
+	PhysicsService:RegisterCollisionGroup("StealthGhost")
+	PhysicsService:CollisionGroupSetCollidable("StealthGhost", "Default", false)
+end)
+
+---------------------------------------------------------------------------
 -- Night-time look
 ---------------------------------------------------------------------------
 Lighting.ClockTime = 0
@@ -58,6 +103,15 @@ if not Lighting:FindFirstChild("StealthBloom") then
 	cc.Saturation = -0.15
 	cc.TintColor = Color3.fromRGB(225, 232, 255)
 	cc.Parent = Lighting
+	local atmosphere = Instance.new("Atmosphere")
+	atmosphere.Name = "StealthAtmosphere"
+	atmosphere.Density = 0.32
+	atmosphere.Offset = 0.1
+	atmosphere.Color = Color3.fromRGB(70, 80, 110)
+	atmosphere.Decay = Color3.fromRGB(20, 24, 40)
+	atmosphere.Glare = 0
+	atmosphere.Haze = 1.6
+	atmosphere.Parent = Lighting
 end
 
 ---------------------------------------------------------------------------
@@ -130,7 +184,7 @@ end
 ---------------------------------------------------------------------------
 -- Building the level
 ---------------------------------------------------------------------------
-local function addWall(m, spec)
+local function addWall(m, spec, decor)
 	local cuts = { spec.from }
 	for _, gap in ipairs(spec.gaps or {}) do
 		table.insert(cuts, gap[1])
@@ -142,23 +196,33 @@ local function addWall(m, spec)
 		local a, b = cuts[i], cuts[i + 1]
 		if b - a > 0.1 then
 			local mid, len = (a + b) / 2, b - a
-			local size, pos
+			local size, pos, grow
 			if spec.axis == "x" then
 				size = Vector3.new(len + 1, h, 1)
 				pos = P(m, mid, spec.fixed, h / 2)
+				grow = Vector3.new(0, 0, 0.3)
 			else
 				size = Vector3.new(1, h, len + 1)
 				pos = P(m, spec.fixed, mid, h / 2)
+				grow = Vector3.new(0.3, 0, 0)
 			end
 			makePart(m.solid, {
 				Name = "Wall", Size = size, Position = pos,
-				Color = Color3.fromRGB(58, 60, 74), Material = Enum.Material.Concrete,
+				Color = Color3.fromRGB(64, 66, 80), Material = Enum.Material.Concrete,
 			})
-			-- thin light strip on top so walls are easy to read from above
-			makePart(m.level, {
-				Name = "WallTrim", Size = Vector3.new(size.X, 0.15, size.Z),
-				Position = pos + Vector3.new(0, h / 2 + 0.08, 0),
-				Color = Color3.fromRGB(110, 115, 140), Material = Enum.Material.SmoothPlastic,
+			local function trim(name, height, y, color, material)
+				makePart(decor, {
+					Name = name, Size = Vector3.new(size.X, height, size.Z) + grow,
+					Position = Vector3.new(pos.X, m.origin.Y + y, pos.Z), Color = color, Material = material,
+					CanCollide = false, CanQuery = false, CastShadow = false,
+				})
+			end
+			trim("Baseboard", 0.7, 0.35, Color3.fromRGB(34, 26, 22), Enum.Material.Wood)
+			trim("WallCap", 0.25, h + 0.12, Color3.fromRGB(30, 31, 38), Enum.Material.SmoothPlastic)
+			makePart(decor, {
+				Name = "WallCapLine", Size = Vector3.new(size.X, 0.06, size.Z) - grow * 2,
+				Position = Vector3.new(pos.X, m.origin.Y + h + 0.27, pos.Z),
+				Color = Color3.fromRGB(190, 150, 80), Material = Enum.Material.Metal,
 				CanCollide = false, CanQuery = false, CastShadow = false,
 			})
 		end
@@ -171,63 +235,94 @@ local function buildLevel(m)
 	level:SetAttribute("Origin", m.origin)
 	m.level = level
 
-	m.solid = Instance.new("Folder")
-	m.solid.Name = "Solid"
-	m.solid.Parent = level
-	m.guardsFolder = Instance.new("Folder")
-	m.guardsFolder.Name = "Guards"
-	m.guardsFolder.Parent = level
+	local function folder(name)
+		local f = Instance.new("Folder")
+		f.Name = name
+		f.Parent = level
+		return f
+	end
+	m.solid = folder("Solid")      -- walls and tall cover: block movement and sight
+	m.lowFolder = folder("Low")    -- low furniture: blocks movement only
+	m.guardsFolder = folder("Guards")
+	local decor = folder("Decor")  -- everything that is only for looks
+	local ctx = {
+		decor = decor,
+		at = function(x, z, y)
+			return P(m, x, z, y)
+		end,
+	}
 
+	-- Floors, one per room so each room has its own material
 	local w, d = LevelDef.halfWidth * 2, LevelDef.halfDepth * 2
 	makePart(level, {
-		Name = "Floor", Size = Vector3.new(w + 4, 2, d + 4), Position = P(m, 0, 0, -1),
-		Color = Color3.fromRGB(46, 40, 38), Material = Enum.Material.WoodPlanks,
+		Name = "Base", Size = Vector3.new(w + 6, 2, d + 6), Position = P(m, 0, 0, -2),
+		Color = Color3.fromRGB(24, 25, 30), Material = Enum.Material.Concrete,
 	})
+	for _, r in ipairs(LevelDef.rooms) do
+		makePart(level, {
+			Name = "Floor", Size = Vector3.new(r[3] - r[1], 1, r[4] - r[2]),
+			Position = P(m, (r[1] + r[3]) / 2, (r[2] + r[4]) / 2, -0.5),
+			Color = Color3.fromRGB(r[6][1], r[6][2], r[6][3]), Material = Enum.Material[r[5]],
+		})
+	end
+	for _, r in ipairs(LevelDef.rugs) do
+		makePart(decor, {
+			Name = "Rug", Size = Vector3.new(r[3], 0.06, r[4]), Position = P(m, r[1], r[2], 0.03),
+			Color = Color3.fromRGB(r[5][1], r[5][2], r[5][3]), Material = Enum.Material.Fabric,
+			CanCollide = false, CanQuery = false, CastShadow = false,
+		})
+		makePart(decor, {
+			Name = "RugBorder", Size = Vector3.new(r[3] + 0.6, 0.04, r[4] + 0.6), Position = P(m, r[1], r[2], 0.02),
+			Color = Color3.fromRGB(190, 150, 80), Material = Enum.Material.Fabric,
+			CanCollide = false, CanQuery = false, CastShadow = false,
+		})
+	end
 
 	for _, spec in ipairs(LevelDef.walls) do
-		addWall(m, spec)
+		addWall(m, spec, decor)
 	end
 
 	for _, c in ipairs(LevelDef.cover) do
 		makePart(m.solid, {
-			Name = "Cover", Size = Vector3.new(c[3], Config.COVER_HEIGHT, c[4]),
-			Position = P(m, c[1], c[2], Config.COVER_HEIGHT / 2),
-			Color = Color3.fromRGB(88, 66, 48), Material = Enum.Material.Wood,
+			Name = "Cover", Size = Vector3.new(c[4], Config.COVER_HEIGHT, c[5]),
+			Position = P(m, c[2], c[3], Config.COVER_HEIGHT / 2), Transparency = 1,
 		})
+		Props.buildTall(ctx, c[1], c[2], c[3], c[4], c[5], c[6])
+	end
+	for _, c in ipairs(LevelDef.low) do
+		makePart(m.lowFolder, {
+			Name = "LowCover", Size = Vector3.new(c[4], 3, c[5]),
+			Position = P(m, c[2], c[3], 1.5), Transparency = 1, CanQuery = false,
+		})
+		Props.buildLow(ctx, c[1], c[2], c[3], c[4], c[5], c[6])
 	end
 
 	m.lamps = {}
 	for _, l in ipairs(LevelDef.lamps) do
-		makePart(level, {
-			Name = "LampPost", Size = Vector3.new(0.4, 6, 0.4), Position = P(m, l[1], l[2], 3),
-			Color = Color3.fromRGB(30, 30, 34), Material = Enum.Material.Metal,
-			CanCollide = false, CanQuery = false,
-		})
-		local bulb = makePart(level, {
-			Name = "LampBulb", Shape = Enum.PartType.Ball, Size = Vector3.new(1.4, 1.4, 1.4),
-			Position = P(m, l[1], l[2], 6.4), Color = Color3.fromRGB(255, 214, 150),
-			Material = Enum.Material.Neon, CanCollide = false, CanQuery = false, CastShadow = false,
-		})
-		local light = Instance.new("PointLight")
-		light.Range = Config.LAMP_RADIUS + 6
-		light.Brightness = 1.6
-		light.Color = Color3.fromRGB(255, 214, 150)
-		light.Shadows = true
-		light.Parent = bulb
-		table.insert(m.lamps, { bulb = bulb, light = light, pos = P(m, l[1], l[2], GUARD_Y) })
+		local shade, light = Props.lamp(ctx, l[1], l[2], Config.LAMP_RADIUS)
+		table.insert(m.lamps, { bulb = shade, light = light, pos = P(m, l[1], l[2], GUARD_Y) })
 	end
 
 	m.fuseBox = makePart(level, {
 		Name = "FuseBox", Size = Vector3.new(1, 4, 3),
-		Position = P(m, LevelDef.fuseBox[1], LevelDef.fuseBox[2], 3),
-		Color = Color3.fromRGB(230, 190, 40), Material = Enum.Material.Metal,
+		Position = P(m, LevelDef.fuseBox[1], LevelDef.fuseBox[2], 3), Transparency = 1,
 	})
+	Props.fuseBox(ctx, LevelDef.fuseBox[1], LevelDef.fuseBox[2])
+
 	m.exitPad = makePart(level, {
 		Name = "ExitPad", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.3, 9, 9),
 		CFrame = CFrame.new(P(m, LevelDef.exit[1], LevelDef.exit[2], 0.15)) * CFrame.Angles(0, 0, math.rad(90)),
 		Color = Color3.fromRGB(80, 255, 140), Material = Enum.Material.Neon,
 		Transparency = 1, CanCollide = false, CanQuery = false, CastShadow = false,
 	})
+	m.exitBeam = makePart(level, {
+		Name = "ExitBeam", Shape = Enum.PartType.Cylinder, Size = Vector3.new(40, 1.2, 1.2),
+		CFrame = CFrame.new(P(m, LevelDef.exit[1], LevelDef.exit[2], 20)) * CFrame.Angles(0, 0, math.rad(90)),
+		Color = Color3.fromRGB(80, 255, 140), Material = Enum.Material.Neon,
+		Transparency = 1, CanCollide = false, CanQuery = false, CastShadow = false,
+	})
+
+	Props.skyline(ctx, LevelDef.halfWidth, LevelDef.halfDepth)
 
 	m.rayParams = RaycastParams.new()
 	m.rayParams.FilterType = Enum.RaycastFilterType.Include
@@ -242,6 +337,8 @@ local function buildGuard(m, spec, index)
 	local first = spec.points[1]
 	local pos = P(m, first[1], first[2], GUARD_Y)
 
+	-- The server only moves this invisible Root. Each player's client attaches an
+	-- animated character to it (see StealthClient).
 	local root = makePart(model, {
 		Name = "Root", Size = Vector3.new(2, 5, 1), CFrame = CFrame.new(pos),
 		Transparency = 1, CanCollide = false, CanQuery = false,
@@ -251,24 +348,6 @@ local function buildGuard(m, spec, index)
 	root:SetAttribute("Down", false)
 	root:SetAttribute("IsTarget", spec.target == true)
 	root:SetAttribute("GuardName", spec.name)
-
-	-- The body is only for looks. Each player's client slides it smoothly after the Root.
-	local body = Instance.new("Model")
-	body.Name = "Body"
-	local suit = spec.target and Color3.fromRGB(150, 25, 35) or Color3.fromRGB(34, 40, 62)
-	local function bodyPart(name, size, offset, color, material)
-		return makePart(body, {
-			Name = name, Size = size, CFrame = CFrame.new(pos + offset), Color = color,
-			Material = material or Enum.Material.SmoothPlastic, CanCollide = false, CanQuery = false,
-		})
-	end
-	local torso = bodyPart("Torso", Vector3.new(2, 2, 1), Vector3.new(0, 0, 0), suit)
-	bodyPart("Legs", Vector3.new(1.8, 2, 0.9), Vector3.new(0, -2, 0), Color3.fromRGB(20, 20, 26))
-	bodyPart("Head", Vector3.new(1.2, 1.2, 1.2), Vector3.new(0, 1.6, 0), Color3.fromRGB(226, 188, 160))
-	bodyPart("Visor", Vector3.new(1, 0.25, 0.2), Vector3.new(0, 1.7, -0.6),
-		spec.target and Color3.fromRGB(255, 200, 60) or Color3.fromRGB(90, 220, 255), Enum.Material.Neon)
-	body.PrimaryPart = torso
-	body.Parent = model
 	model.Parent = m.guardsFolder
 
 	return {
@@ -526,6 +605,7 @@ local function downGuard(m, g)
 		setAttr(m.level, "TargetDown", true)
 		setAttr(m.level, "Objective", "Target down. Get back to the exit in the storage room.")
 		m.exitPad.Transparency = 0.3
+		m.exitBeam.Transparency = 0.75
 	else
 		m.takedowns = m.takedowns + 1
 	end
@@ -546,6 +626,7 @@ local function resetMission(m)
 	setLights(m, true)
 	spawnGuards(m)
 	m.exitPad.Transparency = 1
+	m.exitBeam.Transparency = 1
 	setAttr(m.level, "State", "briefing")
 	setAttr(m.level, "TargetDown", false)
 	setAttr(m.level, "Lit", false)

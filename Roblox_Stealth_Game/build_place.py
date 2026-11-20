@@ -26,7 +26,8 @@ body = (
     + item("ReplicatedStorage", "ReplicatedStorage",
            item("ModuleScript", "StealthConfig", source=read("src/shared/StealthConfig.lua")))
     + item("ServerScriptService", "ServerScriptService",
-           item("Script", "StealthServer", source=read("src/server/StealthServer.server.lua")))
+           item("Script", "StealthServer", source=read("src/server/StealthServer.server.lua"))
+           + item("ModuleScript", "StealthProps", source=read("src/server/StealthProps.lua")))
     + item("StarterPlayer", "StarterPlayer",
            item("StarterPlayerScripts", "StarterPlayerScripts",
                 item("LocalScript", "StealthClient", source=read("src/client/StealthClient.client.lua"))

@@ -101,15 +101,49 @@ Config.Level = {
 		{ axis = "z", fixed = 25, from = 6, to = 40, gaps = { { 20, 28 } } },
 	},
 
-	-- Things to hide behind: { x, z, sizeX, sizeZ }
+	-- Floors: { x1, z1, x2, z2, material, { r, g, b } }
+	rooms = {
+		{ -60, -40, -10, -10, "Fabric", { 58, 30, 34 } },    -- office carpet
+		{ -10, -40, 35, -10, "WoodPlanks", { 74, 52, 38 } }, -- lounge
+		{ 35, -40, 60, -10, "Slate", { 62, 64, 72 } },       -- balcony
+		{ -60, -10, 60, 6, "Marble", { 48, 50, 58 } },       -- hallway
+		{ -60, 6, -25, 40, "Concrete", { 58, 58, 60 } },     -- storage
+		{ -25, 6, 25, 40, "Marble", { 84, 80, 76 } },        -- lobby
+		{ 25, 6, 60, 40, "DiamondPlate", { 44, 48, 56 } },   -- security
+	},
+
+	-- Rugs, just for looks: { x, z, sizeX, sizeZ, { r, g, b } }
+	rugs = {
+		{ 0, -2, 108, 5, { 96, 26, 34 } },
+		{ -45, -27, 22, 9, { 30, 34, 52 } },
+		{ 15, -19, 16, 8, { 40, 44, 60 } },
+		{ 0, 17, 24, 5, { 96, 26, 34 } },
+	},
+
+	-- Tall things to hide behind. Guards can't see over them: { kind, x, z, sizeX, sizeZ }
+	-- kinds: crates, pillar, reception, planter, servers, lockers, bar, screen, bookshelf, cabinet
 	cover = {
-		{ -50, 18, 6, 6 }, { -35, 34, 8, 4 },                      -- storage crates
-		{ 0, 26, 14, 3 }, { -14, 12, 3, 3 }, { 14, 12, 3, 3 }, { -18, 34, 8, 3 }, -- lobby
-		{ -20, -8, 4, 2 }, { 22, 4, 4, 2 }, { -52, 4, 4, 2 },      -- hallway planters
-		{ 50, 12, 10, 3 }, { 30, 36, 4, 6 },                       -- security
-		{ 10, -36, 16, 3 }, { 5, -20, 8, 3 }, { 25, -19, 3, 6 },   -- lounge
-		{ -45, -35, 10, 3 }, { -20, -38, 10, 2 }, { -56, -20, 3, 8 }, -- office
-		{ 56, -34, 3, 6 }, { 40, -36, 6, 3 },                      -- balcony
+		{ "crates", -50, 18, 6, 6 }, { "crates", -35, 34, 8, 4 },
+		{ "reception", 0, 26, 14, 3 }, { "pillar", -14, 12, 3, 3 }, { "pillar", 14, 12, 3, 3 },
+		{ "planter", -18, 34, 8, 3 },
+		{ "planter", -20, -8, 4, 2 }, { "planter", 22, 4, 4, 2 }, { "planter", -52, 4, 4, 2 },
+		{ "servers", 50, 12, 10, 3 }, { "lockers", 30, 36, 4, 6 },
+		{ "bar", 10, -36, 16, 3 }, { "screen", 5, -20, 8, 3 }, { "screen", 25, -19, 3, 6 },
+		{ "bookshelf", -45, -38.5, 14, 2 }, { "bookshelf", -20, -38, 10, 2 }, { "cabinet", -56, -20, 3, 8 },
+		{ "planter", 56, -34, 3, 6 }, { "planter", 40, -36, 6, 3 },
+	},
+
+	-- Low furniture. You have to walk around it, but guards see over it: { kind, x, z, sizeX, sizeZ, flip }
+	-- kinds: desk, sofa, table, bench, pallet, console, lounger
+	low = {
+		{ "desk", -45, -33.5, 9, 3 },
+		{ "sofa", -30, -36, 8, 3 },
+		{ "table", 15, -18, 5, 3 },
+		{ "sofa", 20, 36, 6, 3, true },
+		{ "bench", -21, 13, 3, 6 },
+		{ "console", 44, 34, 8, 3, true },
+		{ "pallet", -30, 14, 5, 5 },
+		{ "lounger", 55, -18, 3, 6 },
 	},
 
 	-- Lamps: { x, z }. Anything within LAMP_RADIUS of one counts as standing in light.
@@ -143,7 +177,7 @@ Config.Level = {
 return Config
 ]]></ProtectedString></Properties></Item>
 </Item>
-<Item class="ServerScriptService" referent="RBX5"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX4"><Properties><string name="Name">StealthServer</string><ProtectedString name="Source"><![CDATA[-- StealthServer (Script, goes in ServerScriptService)
+<Item class="ServerScriptService" referent="RBX6"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX4"><Properties><string name="Name">StealthServer</string><ProtectedString name="Source"><![CDATA[-- StealthServer (Script, goes in ServerScriptService)
 -- Builds a private copy of the building for every player and runs their mission:
 -- guard patrols, what guards can see and hear, takedowns, tools, and the final grade.
 
@@ -155,6 +189,7 @@ local Lighting = game:GetService("Lighting")
 
 local Config = require(ReplicatedStorage:WaitForChild("StealthConfig"))
 local LevelDef = Config.Level
+local Props = require(script.Parent:WaitForChild("StealthProps"))
 
 local VIEW_COS = math.cos(math.rad(Config.VIEW_HALF_ANGLE))
 local CHASE_COS = math.cos(math.rad(80)) -- a guard who is chasing you sees much wider
@@ -181,6 +216,50 @@ local FxRemote = makeRemote("Fx")             -- server -> client: (effectName, 
 remotes.Parent = ReplicatedStorage
 
 ---------------------------------------------------------------------------
+-- Guard character models
+---------------------------------------------------------------------------
+-- Real Roblox character rigs for the guards and the target. Each player's client copies
+-- these, dresses them and animates them. The server only tracks where guards are.
+local rigs = Instance.new("Folder")
+rigs.Name = "StealthRigs"
+rigs.Parent = ReplicatedStorage
+
+local function makeRigTemplate(name, skin, suit, trousers)
+	task.spawn(function()
+		local desc = Instance.new("HumanoidDescription")
+		desc.HeadColor = skin
+		desc.TorsoColor = suit
+		desc.LeftArmColor = suit
+		desc.RightArmColor = suit
+		desc.LeftLegColor = trousers
+		desc.RightLegColor = trousers
+		local ok, rig = pcall(function()
+			return Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15)
+		end)
+		if ok and rig then
+			rig.Name = name
+			for _, d in ipairs(rig:GetDescendants()) do
+				if d:IsA("LuaSourceContainer") then
+					d:Destroy()
+				end
+			end
+			rig.Parent = rigs
+		else
+			warn("Could not make " .. name .. ": " .. tostring(rig))
+		end
+	end)
+end
+makeRigTemplate("GuardRig", Color3.fromRGB(222, 184, 156), Color3.fromRGB(30, 36, 56), Color3.fromRGB(18, 19, 24))
+makeRigTemplate("TargetRig", Color3.fromRGB(232, 196, 170), Color3.fromRGB(128, 22, 32), Color3.fromRGB(24, 20, 22))
+
+-- Guard characters are only for looks, so they must never bump into players.
+pcall(function()
+	local PhysicsService = game:GetService("PhysicsService")
+	PhysicsService:RegisterCollisionGroup("StealthGhost")
+	PhysicsService:CollisionGroupSetCollidable("StealthGhost", "Default", false)
+end)
+
+---------------------------------------------------------------------------
 -- Night-time look
 ---------------------------------------------------------------------------
 Lighting.ClockTime = 0
@@ -203,6 +282,15 @@ if not Lighting:FindFirstChild("StealthBloom") then
 	cc.Saturation = -0.15
 	cc.TintColor = Color3.fromRGB(225, 232, 255)
 	cc.Parent = Lighting
+	local atmosphere = Instance.new("Atmosphere")
+	atmosphere.Name = "StealthAtmosphere"
+	atmosphere.Density = 0.32
+	atmosphere.Offset = 0.1
+	atmosphere.Color = Color3.fromRGB(70, 80, 110)
+	atmosphere.Decay = Color3.fromRGB(20, 24, 40)
+	atmosphere.Glare = 0
+	atmosphere.Haze = 1.6
+	atmosphere.Parent = Lighting
 end
 
 ---------------------------------------------------------------------------
@@ -275,7 +363,7 @@ end
 ---------------------------------------------------------------------------
 -- Building the level
 ---------------------------------------------------------------------------
-local function addWall(m, spec)
+local function addWall(m, spec, decor)
 	local cuts = { spec.from }
 	for _, gap in ipairs(spec.gaps or {}) do
 		table.insert(cuts, gap[1])
@@ -287,23 +375,33 @@ local function addWall(m, spec)
 		local a, b = cuts[i], cuts[i + 1]
 		if b - a > 0.1 then
 			local mid, len = (a + b) / 2, b - a
-			local size, pos
+			local size, pos, grow
 			if spec.axis == "x" then
 				size = Vector3.new(len + 1, h, 1)
 				pos = P(m, mid, spec.fixed, h / 2)
+				grow = Vector3.new(0, 0, 0.3)
 			else
 				size = Vector3.new(1, h, len + 1)
 				pos = P(m, spec.fixed, mid, h / 2)
+				grow = Vector3.new(0.3, 0, 0)
 			end
 			makePart(m.solid, {
 				Name = "Wall", Size = size, Position = pos,
-				Color = Color3.fromRGB(58, 60, 74), Material = Enum.Material.Concrete,
+				Color = Color3.fromRGB(64, 66, 80), Material = Enum.Material.Concrete,
 			})
-			-- thin light strip on top so walls are easy to read from above
-			makePart(m.level, {
-				Name = "WallTrim", Size = Vector3.new(size.X, 0.15, size.Z),
-				Position = pos + Vector3.new(0, h / 2 + 0.08, 0),
-				Color = Color3.fromRGB(110, 115, 140), Material = Enum.Material.SmoothPlastic,
+			local function trim(name, height, y, color, material)
+				makePart(decor, {
+					Name = name, Size = Vector3.new(size.X, height, size.Z) + grow,
+					Position = Vector3.new(pos.X, m.origin.Y + y, pos.Z), Color = color, Material = material,
+					CanCollide = false, CanQuery = false, CastShadow = false,
+				})
+			end
+			trim("Baseboard", 0.7, 0.35, Color3.fromRGB(34, 26, 22), Enum.Material.Wood)
+			trim("WallCap", 0.25, h + 0.12, Color3.fromRGB(30, 31, 38), Enum.Material.SmoothPlastic)
+			makePart(decor, {
+				Name = "WallCapLine", Size = Vector3.new(size.X, 0.06, size.Z) - grow * 2,
+				Position = Vector3.new(pos.X, m.origin.Y + h + 0.27, pos.Z),
+				Color = Color3.fromRGB(190, 150, 80), Material = Enum.Material.Metal,
 				CanCollide = false, CanQuery = false, CastShadow = false,
 			})
 		end
@@ -316,63 +414,94 @@ local function buildLevel(m)
 	level:SetAttribute("Origin", m.origin)
 	m.level = level
 
-	m.solid = Instance.new("Folder")
-	m.solid.Name = "Solid"
-	m.solid.Parent = level
-	m.guardsFolder = Instance.new("Folder")
-	m.guardsFolder.Name = "Guards"
-	m.guardsFolder.Parent = level
+	local function folder(name)
+		local f = Instance.new("Folder")
+		f.Name = name
+		f.Parent = level
+		return f
+	end
+	m.solid = folder("Solid")      -- walls and tall cover: block movement and sight
+	m.lowFolder = folder("Low")    -- low furniture: blocks movement only
+	m.guardsFolder = folder("Guards")
+	local decor = folder("Decor")  -- everything that is only for looks
+	local ctx = {
+		decor = decor,
+		at = function(x, z, y)
+			return P(m, x, z, y)
+		end,
+	}
 
+	-- Floors, one per room so each room has its own material
 	local w, d = LevelDef.halfWidth * 2, LevelDef.halfDepth * 2
 	makePart(level, {
-		Name = "Floor", Size = Vector3.new(w + 4, 2, d + 4), Position = P(m, 0, 0, -1),
-		Color = Color3.fromRGB(46, 40, 38), Material = Enum.Material.WoodPlanks,
+		Name = "Base", Size = Vector3.new(w + 6, 2, d + 6), Position = P(m, 0, 0, -2),
+		Color = Color3.fromRGB(24, 25, 30), Material = Enum.Material.Concrete,
 	})
+	for _, r in ipairs(LevelDef.rooms) do
+		makePart(level, {
+			Name = "Floor", Size = Vector3.new(r[3] - r[1], 1, r[4] - r[2]),
+			Position = P(m, (r[1] + r[3]) / 2, (r[2] + r[4]) / 2, -0.5),
+			Color = Color3.fromRGB(r[6][1], r[6][2], r[6][3]), Material = Enum.Material[r[5]],
+		})
+	end
+	for _, r in ipairs(LevelDef.rugs) do
+		makePart(decor, {
+			Name = "Rug", Size = Vector3.new(r[3], 0.06, r[4]), Position = P(m, r[1], r[2], 0.03),
+			Color = Color3.fromRGB(r[5][1], r[5][2], r[5][3]), Material = Enum.Material.Fabric,
+			CanCollide = false, CanQuery = false, CastShadow = false,
+		})
+		makePart(decor, {
+			Name = "RugBorder", Size = Vector3.new(r[3] + 0.6, 0.04, r[4] + 0.6), Position = P(m, r[1], r[2], 0.02),
+			Color = Color3.fromRGB(190, 150, 80), Material = Enum.Material.Fabric,
+			CanCollide = false, CanQuery = false, CastShadow = false,
+		})
+	end
 
 	for _, spec in ipairs(LevelDef.walls) do
-		addWall(m, spec)
+		addWall(m, spec, decor)
 	end
 
 	for _, c in ipairs(LevelDef.cover) do
 		makePart(m.solid, {
-			Name = "Cover", Size = Vector3.new(c[3], Config.COVER_HEIGHT, c[4]),
-			Position = P(m, c[1], c[2], Config.COVER_HEIGHT / 2),
-			Color = Color3.fromRGB(88, 66, 48), Material = Enum.Material.Wood,
+			Name = "Cover", Size = Vector3.new(c[4], Config.COVER_HEIGHT, c[5]),
+			Position = P(m, c[2], c[3], Config.COVER_HEIGHT / 2), Transparency = 1,
 		})
+		Props.buildTall(ctx, c[1], c[2], c[3], c[4], c[5], c[6])
+	end
+	for _, c in ipairs(LevelDef.low) do
+		makePart(m.lowFolder, {
+			Name = "LowCover", Size = Vector3.new(c[4], 3, c[5]),
+			Position = P(m, c[2], c[3], 1.5), Transparency = 1, CanQuery = false,
+		})
+		Props.buildLow(ctx, c[1], c[2], c[3], c[4], c[5], c[6])
 	end
 
 	m.lamps = {}
 	for _, l in ipairs(LevelDef.lamps) do
-		makePart(level, {
-			Name = "LampPost", Size = Vector3.new(0.4, 6, 0.4), Position = P(m, l[1], l[2], 3),
-			Color = Color3.fromRGB(30, 30, 34), Material = Enum.Material.Metal,
-			CanCollide = false, CanQuery = false,
-		})
-		local bulb = makePart(level, {
-			Name = "LampBulb", Shape = Enum.PartType.Ball, Size = Vector3.new(1.4, 1.4, 1.4),
-			Position = P(m, l[1], l[2], 6.4), Color = Color3.fromRGB(255, 214, 150),
-			Material = Enum.Material.Neon, CanCollide = false, CanQuery = false, CastShadow = false,
-		})
-		local light = Instance.new("PointLight")
-		light.Range = Config.LAMP_RADIUS + 6
-		light.Brightness = 1.6
-		light.Color = Color3.fromRGB(255, 214, 150)
-		light.Shadows = true
-		light.Parent = bulb
-		table.insert(m.lamps, { bulb = bulb, light = light, pos = P(m, l[1], l[2], GUARD_Y) })
+		local shade, light = Props.lamp(ctx, l[1], l[2], Config.LAMP_RADIUS)
+		table.insert(m.lamps, { bulb = shade, light = light, pos = P(m, l[1], l[2], GUARD_Y) })
 	end
 
 	m.fuseBox = makePart(level, {
 		Name = "FuseBox", Size = Vector3.new(1, 4, 3),
-		Position = P(m, LevelDef.fuseBox[1], LevelDef.fuseBox[2], 3),
-		Color = Color3.fromRGB(230, 190, 40), Material = Enum.Material.Metal,
+		Position = P(m, LevelDef.fuseBox[1], LevelDef.fuseBox[2], 3), Transparency = 1,
 	})
+	Props.fuseBox(ctx, LevelDef.fuseBox[1], LevelDef.fuseBox[2])
+
 	m.exitPad = makePart(level, {
 		Name = "ExitPad", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.3, 9, 9),
 		CFrame = CFrame.new(P(m, LevelDef.exit[1], LevelDef.exit[2], 0.15)) * CFrame.Angles(0, 0, math.rad(90)),
 		Color = Color3.fromRGB(80, 255, 140), Material = Enum.Material.Neon,
 		Transparency = 1, CanCollide = false, CanQuery = false, CastShadow = false,
 	})
+	m.exitBeam = makePart(level, {
+		Name = "ExitBeam", Shape = Enum.PartType.Cylinder, Size = Vector3.new(40, 1.2, 1.2),
+		CFrame = CFrame.new(P(m, LevelDef.exit[1], LevelDef.exit[2], 20)) * CFrame.Angles(0, 0, math.rad(90)),
+		Color = Color3.fromRGB(80, 255, 140), Material = Enum.Material.Neon,
+		Transparency = 1, CanCollide = false, CanQuery = false, CastShadow = false,
+	})
+
+	Props.skyline(ctx, LevelDef.halfWidth, LevelDef.halfDepth)
 
 	m.rayParams = RaycastParams.new()
 	m.rayParams.FilterType = Enum.RaycastFilterType.Include
@@ -387,6 +516,8 @@ local function buildGuard(m, spec, index)
 	local first = spec.points[1]
 	local pos = P(m, first[1], first[2], GUARD_Y)
 
+	-- The server only moves this invisible Root. Each player's client attaches an
+	-- animated character to it (see StealthClient).
 	local root = makePart(model, {
 		Name = "Root", Size = Vector3.new(2, 5, 1), CFrame = CFrame.new(pos),
 		Transparency = 1, CanCollide = false, CanQuery = false,
@@ -396,24 +527,6 @@ local function buildGuard(m, spec, index)
 	root:SetAttribute("Down", false)
 	root:SetAttribute("IsTarget", spec.target == true)
 	root:SetAttribute("GuardName", spec.name)
-
-	-- The body is only for looks. Each player's client slides it smoothly after the Root.
-	local body = Instance.new("Model")
-	body.Name = "Body"
-	local suit = spec.target and Color3.fromRGB(150, 25, 35) or Color3.fromRGB(34, 40, 62)
-	local function bodyPart(name, size, offset, color, material)
-		return makePart(body, {
-			Name = name, Size = size, CFrame = CFrame.new(pos + offset), Color = color,
-			Material = material or Enum.Material.SmoothPlastic, CanCollide = false, CanQuery = false,
-		})
-	end
-	local torso = bodyPart("Torso", Vector3.new(2, 2, 1), Vector3.new(0, 0, 0), suit)
-	bodyPart("Legs", Vector3.new(1.8, 2, 0.9), Vector3.new(0, -2, 0), Color3.fromRGB(20, 20, 26))
-	bodyPart("Head", Vector3.new(1.2, 1.2, 1.2), Vector3.new(0, 1.6, 0), Color3.fromRGB(226, 188, 160))
-	bodyPart("Visor", Vector3.new(1, 0.25, 0.2), Vector3.new(0, 1.7, -0.6),
-		spec.target and Color3.fromRGB(255, 200, 60) or Color3.fromRGB(90, 220, 255), Enum.Material.Neon)
-	body.PrimaryPart = torso
-	body.Parent = model
 	model.Parent = m.guardsFolder
 
 	return {
@@ -671,6 +784,7 @@ local function downGuard(m, g)
 		setAttr(m.level, "TargetDown", true)
 		setAttr(m.level, "Objective", "Target down. Get back to the exit in the storage room.")
 		m.exitPad.Transparency = 0.3
+		m.exitBeam.Transparency = 0.75
 	else
 		m.takedowns = m.takedowns + 1
 	end
@@ -691,6 +805,7 @@ local function resetMission(m)
 	setLights(m, true)
 	spawnGuards(m)
 	m.exitPad.Transparency = 1
+	m.exitBeam.Transparency = 1
 	setAttr(m.level, "State", "briefing")
 	setAttr(m.level, "TargetDown", false)
 	setAttr(m.level, "Lit", false)
@@ -1074,8 +1189,459 @@ for _, p in ipairs(Players:GetPlayers()) do
 	task.spawn(onPlayerAdded, p)
 end
 ]]></ProtectedString></Properties></Item>
+<Item class="ModuleScript" referent="RBX5"><Properties><string name="Name">StealthProps</string><ProtectedString name="Source"><![CDATA[-- StealthProps (ModuleScript, goes in ServerScriptService next to StealthServer)
+-- Builds the furniture and scenery for a level out of detailed parts: crate stacks,
+-- bookshelves, server racks, sofas, desks, plants, lamps and the city around the building.
+-- None of these parts collide. StealthServer adds one invisible box per prop for that.
+
+local Props = {}
+
+local rng = Random.new(7)
+
+local function rgb(r, g, b)
+	return Color3.fromRGB(math.clamp(r, 0, 255), math.clamp(g, 0, 255), math.clamp(b, 0, 255))
+end
+
+-- ctx.at(x, z, y) turns level coordinates into a world position. ctx.decor is where parts go.
+local function part(ctx, size, x, y, z, color, material, extra)
+	local p = Instance.new("Part")
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	p.Size = size
+	p.Position = ctx.at(x, z, y)
+	p.Color = color
+	p.Material = material or Enum.Material.SmoothPlastic
+	if size.X < 0.6 or size.Y < 0.3 or size.Z < 0.6 then
+		p.CastShadow = false
+	end
+	for k, v in pairs(extra or {}) do
+		p[k] = v
+	end
+	p.Parent = ctx.decor
+	return p
+end
+
+-- an upright cylinder
+local function cyl(ctx, diameter, height, x, y, z, color, material, extra)
+	local p = part(ctx, Vector3.new(height, diameter, diameter), x, y, z, color, material, extra)
+	p.Shape = Enum.PartType.Cylinder
+	p.CFrame = CFrame.new(p.Position) * CFrame.Angles(0, 0, math.rad(90))
+	return p
+end
+
+local function ball(ctx, diameter, x, y, z, color, material, extra)
+	local p = part(ctx, Vector3.new(diameter, diameter, diameter), x, y, z, color, material, extra)
+	p.Shape = Enum.PartType.Ball
+	return p
+end
+
+-- Lets a builder think in "along the long side" (u) and "across" (v) no matter which way the prop faces.
+local function orient(x, z, sx, sz, flip)
+	local alongX = sx >= sz
+	local o = { len = alongX and sx or sz, wid = alongX and sz or sx }
+	local sign = flip and -1 or 1
+	function o.pos(u, v)
+		v = v * sign
+		if alongX then
+			return x + u, z + v
+		end
+		return x + v, z + u
+	end
+	function o.size(lu, h, lv)
+		if alongX then
+			return Vector3.new(lu, h, lv)
+		end
+		return Vector3.new(lv, h, lu)
+	end
+	return o
+end
+
+local WOOD_DARK = rgb(58, 40, 30)
+local WOOD = rgb(112, 80, 54)
+local METAL_DARK = rgb(34, 36, 42)
+local MARBLE = rgb(206, 202, 196)
+
+---------------------------------------------------------------------------
+-- Tall props (these block a guard's view)
+---------------------------------------------------------------------------
+local tall = {}
+
+function tall.crates(ctx, x, z, sx, sz)
+	local nx = math.max(1, math.floor(sx / 3 + 0.5))
+	local nz = math.max(1, math.floor(sz / 3 + 0.5))
+	local cx, cz = sx / nx, sz / nz
+	for i = 1, nx do
+		for j = 1, nz do
+			local px = x - sx / 2 + cx * (i - 0.5)
+			local pz = z - sz / 2 + cz * (j - 0.5)
+			local tone = rng:NextNumber(0.82, 1.08)
+			local wood = rgb(124 * tone, 90 * tone, 58 * tone)
+			part(ctx, Vector3.new(cx - 0.2, 3, cz - 0.2), px, 1.5, pz, wood, Enum.Material.WoodPlanks)
+			part(ctx, Vector3.new(cx - 0.1, 0.25, cz - 0.1), px, 0.3, pz, WOOD_DARK, Enum.Material.Wood)
+			part(ctx, Vector3.new(cx - 0.1, 0.25, cz - 0.1), px, 2.75, pz, WOOD_DARK, Enum.Material.Wood)
+			local s = rng:NextNumber(0.72, 0.94)
+			local tone2 = rng:NextNumber(0.8, 1.05)
+			local w2, d2 = (cx - 0.2) * s, (cz - 0.2) * s
+			part(ctx, Vector3.new(w2, 2.6, d2), px, 4.3, pz, rgb(132 * tone2, 98 * tone2, 64 * tone2),
+				Enum.Material.WoodPlanks)
+			part(ctx, Vector3.new(w2 + 0.1, 0.2, d2 + 0.1), px, 5.5, pz, WOOD_DARK, Enum.Material.Wood)
+			-- stencil mark on the lid
+			part(ctx, Vector3.new(w2 * 0.5, 0.04, d2 * 0.18), px, 5.62, pz, rgb(200, 60, 50), Enum.Material.SmoothPlastic)
+		end
+	end
+end
+
+function tall.pillar(ctx, x, z, sx, sz)
+	part(ctx, Vector3.new(sx + 0.3, 0.5, sz + 0.3), x, 0.25, z, rgb(60, 60, 66), Enum.Material.Marble)
+	part(ctx, Vector3.new(sx - 0.5, 6.2, sz - 0.5), x, 3.6, z, MARBLE, Enum.Material.Marble)
+	part(ctx, Vector3.new(sx + 0.3, 0.4, sz + 0.3), x, 6.9, z, rgb(60, 60, 66), Enum.Material.Marble)
+	part(ctx, Vector3.new(sx - 0.3, 0.12, sz - 0.3), x, 0.9, z, rgb(214, 170, 90), Enum.Material.Metal)
+end
+
+function tall.reception(ctx, x, z, sx, sz)
+	local o = orient(x, z, sx, sz)
+	local px, pz = o.pos(0, o.wid * 0.2)
+	part(ctx, o.size(o.len, 3.3, o.wid * 0.6), px, 1.65, pz, WOOD_DARK, Enum.Material.Wood)
+	part(ctx, o.size(o.len + 0.3, 0.2, o.wid * 0.6 + 0.3), px, 3.4, pz, MARBLE, Enum.Material.Marble)
+	local nx, nz = o.pos(0, o.wid * 0.5 + 0.03)
+	part(ctx, o.size(o.len - 1, 0.12, 0.1), nx, 2.2, nz, rgb(255, 190, 110), Enum.Material.Neon)
+	-- tall backdrop with a glowing logo bar
+	local bx, bz = o.pos(0, -o.wid * 0.35)
+	part(ctx, o.size(o.len, 5.8, o.wid * 0.25), bx, 2.9, bz, rgb(28, 30, 38), Enum.Material.SmoothPlastic)
+	part(ctx, o.size(o.len * 0.5, 0.5, o.wid * 0.25 + 0.08), bx, 4.6, bz, rgb(255, 80, 80), Enum.Material.Neon)
+	part(ctx, o.size(o.len + 0.2, 0.15, o.wid * 0.25 + 0.2), bx, 5.85, bz, rgb(214, 170, 90), Enum.Material.Metal)
+	-- monitors on the desk
+	for _, u in ipairs({ -o.len * 0.25, o.len * 0.25 }) do
+		local mx, mz = o.pos(u, o.wid * 0.15)
+		part(ctx, o.size(1.6, 1, 0.12), mx, 4.1, mz, METAL_DARK, Enum.Material.SmoothPlastic)
+		part(ctx, o.size(1.4, 0.8, 0.14), mx, 4.1, mz, rgb(90, 190, 255), Enum.Material.Neon)
+	end
+end
+
+function tall.planter(ctx, x, z, sx, sz)
+	part(ctx, Vector3.new(sx, 1.6, sz), x, 0.8, z, rgb(52, 54, 60), Enum.Material.Concrete)
+	part(ctx, Vector3.new(sx + 0.2, 0.2, sz + 0.2), x, 1.6, z, rgb(36, 38, 44), Enum.Material.Concrete)
+	part(ctx, Vector3.new(sx - 0.4, 0.15, sz - 0.4), x, 1.68, z, rgb(44, 32, 24), Enum.Material.Ground)
+	local o = orient(x, z, sx, sz)
+	local count = math.max(2, math.floor(o.len / 1.6))
+	for i = 1, count do
+		local u = -o.len / 2 + o.len * (i - 0.5) / count
+		local px, pz = o.pos(u, rng:NextNumber(-0.2, 0.2))
+		local height = rng:NextNumber(4.6, 6.2)
+		cyl(ctx, 0.22, height - 1.6, px, 1.6 + (height - 1.6) / 2, pz, rgb(70, 52, 36), Enum.Material.Wood)
+		for _ = 1, 3 do
+			local g = rng:NextNumber(0.75, 1.15)
+			ball(ctx, rng:NextNumber(1.5, 2.3), px + rng:NextNumber(-0.5, 0.5), height - rng:NextNumber(0, 1.6),
+				pz + rng:NextNumber(-0.4, 0.4), rgb(40 * g, 104 * g, 58 * g), Enum.Material.Grass)
+		end
+	end
+end
+
+function tall.servers(ctx, x, z, sx, sz)
+	local o = orient(x, z, sx, sz)
+	local count = math.max(1, math.floor(o.len / 2.5 + 0.5))
+	local w = o.len / count
+	for i = 1, count do
+		local u = -o.len / 2 + w * (i - 0.5)
+		local px, pz = o.pos(u, 0)
+		part(ctx, o.size(w - 0.15, 5.7, o.wid), px, 2.85, pz, rgb(26, 28, 34), Enum.Material.Metal)
+		part(ctx, o.size(w - 0.5, 0.08, o.wid - 0.5), px, 5.74, pz, rgb(14, 15, 18), Enum.Material.DiamondPlate)
+		for side = -1, 1, 2 do
+			local fx, fz = o.pos(u, side * (o.wid / 2 + 0.03))
+			part(ctx, o.size(w - 0.5, 4.8, 0.06), fx, 2.9, fz, rgb(12, 13, 16), Enum.Material.SmoothPlastic)
+			for row = 1, 5 do
+				local led = (rng:NextNumber() < 0.25) and rgb(255, 170, 40) or rgb(60, 255, 130)
+				local lx, lz = o.pos(u + rng:NextNumber(-w * 0.25, w * 0.25), side * (o.wid / 2 + 0.07))
+				part(ctx, o.size(0.5, 0.1, 0.05), lx, 0.9 + row * 0.8, lz, led, Enum.Material.Neon)
+			end
+		end
+		local tx, tz = o.pos(u, 0)
+		part(ctx, o.size(0.4, 0.05, 0.4), tx, 5.8, tz, rgb(60, 255, 130), Enum.Material.Neon)
+	end
+end
+
+function tall.lockers(ctx, x, z, sx, sz)
+	local o = orient(x, z, sx, sz)
+	local count = math.max(2, math.floor(o.len / 1.5 + 0.5))
+	local w = o.len / count
+	for i = 1, count do
+		local u = -o.len / 2 + w * (i - 0.5)
+		local px, pz = o.pos(u, 0)
+		part(ctx, o.size(w - 0.08, 5.7, o.wid), px, 2.85, pz, rgb(64, 84, 104), Enum.Material.Metal)
+		for side = -1, 1, 2 do
+			local hx, hz = o.pos(u + w * 0.25, side * (o.wid / 2 + 0.04))
+			part(ctx, o.size(0.12, 0.5, 0.06), hx, 3, hz, rgb(190, 195, 205), Enum.Material.Metal)
+			local vx, vz = o.pos(u, side * (o.wid / 2 + 0.03))
+			part(ctx, o.size(w * 0.6, 0.5, 0.05), vx, 4.8, vz, rgb(40, 54, 70), Enum.Material.Metal)
+		end
+	end
+	part(ctx, Vector3.new(sx + 0.1, 0.12, sz + 0.1), x, 5.76, z, rgb(44, 60, 76), Enum.Material.Metal)
+end
+
+function tall.bar(ctx, x, z, sx, sz)
+	local o = orient(x, z, sx, sz)
+	-- back shelf (tall) with bottles, counter in front
+	local bx, bz = o.pos(0, -o.wid * 0.3)
+	part(ctx, o.size(o.len, 5.7, o.wid * 0.38), bx, 2.85, bz, WOOD_DARK, Enum.Material.Wood)
+	part(ctx, o.size(o.len - 0.4, 0.1, o.wid * 0.38 + 0.1), bx, 4.2, bz, rgb(255, 170, 90), Enum.Material.Neon)
+	local bottles = { rgb(90, 200, 120), rgb(230, 170, 70), rgb(120, 170, 240), rgb(220, 90, 90), rgb(240, 240, 230) }
+	local count = math.floor(o.len / 0.9)
+	for i = 1, count do
+		local u = -o.len / 2 + o.len * (i - 0.5) / count
+		local px, pz = o.pos(u, -o.wid * 0.3)
+		local c = bottles[rng:NextInteger(1, #bottles)]
+		local h = rng:NextNumber(0.7, 1.1)
+		cyl(ctx, 0.32, h, px, 5.7 + h / 2, pz, c, Enum.Material.Glass, { Transparency = 0.25 })
+	end
+	local cx, cz = o.pos(0, o.wid * 0.22)
+	part(ctx, o.size(o.len, 3.3, o.wid * 0.5), cx, 1.65, cz, rgb(74, 52, 38), Enum.Material.Wood)
+	part(ctx, o.size(o.len + 0.3, 0.2, o.wid * 0.5 + 0.3), cx, 3.4, cz, rgb(30, 30, 34), Enum.Material.Marble,
+		{ Reflectance = 0.15 })
+	local rx, rz = o.pos(0, o.wid * 0.5)
+	part(ctx, o.size(o.len, 0.1, 0.08), rx, 0.5, rz, rgb(214, 170, 90), Enum.Material.Metal)
+end
+
+function tall.screen(ctx, x, z, sx, sz)
+	local o = orient(x, z, sx, sz)
+	local slats = math.floor(o.len / 0.7)
+	for i = 1, slats do
+		local u = -o.len / 2 + o.len * (i - 0.5) / slats
+		local px, pz = o.pos(u, 0)
+		part(ctx, o.size(0.28, 5.4, o.wid * 0.5), px, 2.9, pz, WOOD, Enum.Material.Wood)
+	end
+	part(ctx, o.size(o.len, 0.25, o.wid * 0.7), x, 0.2, z, WOOD_DARK, Enum.Material.Wood)
+	part(ctx, o.size(o.len, 0.25, o.wid * 0.7), x, 5.6, z, WOOD_DARK, Enum.Material.Wood)
+end
+
+function tall.bookshelf(ctx, x, z, sx, sz)
+	local o = orient(x, z, sx, sz)
+	part(ctx, o.size(o.len, 5.7, o.wid), x, 2.85, z, WOOD_DARK, Enum.Material.Wood)
+	part(ctx, o.size(o.len + 0.2, 0.15, o.wid + 0.2), x, 5.78, z, rgb(40, 28, 22), Enum.Material.Wood)
+	local colors = { rgb(150, 40, 40), rgb(40, 70, 120), rgb(50, 100, 70), rgb(190, 160, 90), rgb(90, 60, 110), rgb(200, 200, 190) }
+	for side = -1, 1, 2 do
+		for row = 1, 4 do
+			local u = -o.len / 2 + 0.3
+			while u < o.len / 2 - 0.5 do
+				local w = rng:NextNumber(0.25, 0.5)
+				local h = rng:NextNumber(0.7, 1)
+				local px, pz = o.pos(u + w / 2, side * (o.wid / 2 + 0.02))
+				part(ctx, o.size(w - 0.04, h, 0.12), px, 0.45 + (row - 1) * 1.3 + h / 2, pz,
+					colors[rng:NextInteger(1, #colors)], Enum.Material.SmoothPlastic)
+				u = u + w
+				if rng:NextNumber() < 0.12 then
+					u = u + 0.5 -- a gap on the shelf
+				end
+			end
+		end
+	end
+end
+
+function tall.cabinet(ctx, x, z, sx, sz)
+	local o = orient(x, z, sx, sz)
+	local count = math.max(2, math.floor(o.len / 2 + 0.5))
+	local w = o.len / count
+	for i = 1, count do
+		local u = -o.len / 2 + w * (i - 0.5)
+		local px, pz = o.pos(u, 0)
+		part(ctx, o.size(w - 0.1, 5.7, o.wid), px, 2.85, pz, rgb(92, 96, 104), Enum.Material.Metal)
+		for side = -1, 1, 2 do
+			for row = 1, 4 do
+				local hx, hz = o.pos(u, side * (o.wid / 2 + 0.04))
+				part(ctx, o.size(w * 0.5, 0.12, 0.06), hx, row * 1.3, hz, rgb(200, 204, 212), Enum.Material.Metal)
+			end
+		end
+	end
+end
+
+---------------------------------------------------------------------------
+-- Low props (you can't walk through them, but guards see over them)
+---------------------------------------------------------------------------
+local low = {}
+
+function low.desk(ctx, x, z, sx, sz, flip)
+	local o = orient(x, z, sx, sz, flip)
+	part(ctx, o.size(o.len, 0.25, o.wid), x, 2.75, z, rgb(66, 44, 32), Enum.Material.Wood, { Reflectance = 0.08 })
+	for _, u in ipairs({ -o.len / 2 + 1.1, o.len / 2 - 1.1 }) do
+		local px, pz = o.pos(u, 0)
+		part(ctx, o.size(1.8, 2.6, o.wid - 0.4), px, 1.3, pz, WOOD_DARK, Enum.Material.Wood)
+	end
+	-- laptop, papers, desk lamp
+	local lx, lz = o.pos(0, 0.2)
+	part(ctx, o.size(1.4, 0.06, 0.9), lx, 2.92, lz, METAL_DARK, Enum.Material.Metal)
+	local sxp, szp = o.pos(0, -0.3)
+	part(ctx, o.size(1.4, 0.9, 0.06), sxp, 3.35, szp, rgb(120, 200, 255), Enum.Material.Neon)
+	local px, pz = o.pos(-o.len * 0.28, 0.1)
+	part(ctx, o.size(0.9, 0.03, 1.2), px, 2.9, pz, rgb(235, 232, 220), Enum.Material.SmoothPlastic)
+	local dx, dz = o.pos(o.len * 0.32, -0.3)
+	cyl(ctx, 0.5, 0.1, dx, 2.92, dz, METAL_DARK, Enum.Material.Metal)
+	cyl(ctx, 0.1, 0.9, dx, 3.35, dz, METAL_DARK, Enum.Material.Metal)
+	cyl(ctx, 0.6, 0.3, dx, 3.9, dz, rgb(255, 214, 150), Enum.Material.Neon)
+	-- chair behind the desk
+	local cx, cz = o.pos(0, o.wid / 2 + 1.3)
+	part(ctx, o.size(1.8, 0.3, 1.8), cx, 1.7, cz, rgb(30, 30, 34), Enum.Material.Fabric)
+	local bx, bz = o.pos(0, o.wid / 2 + 2.1)
+	part(ctx, o.size(1.8, 2.4, 0.3), bx, 2.8, bz, rgb(30, 30, 34), Enum.Material.Fabric)
+	cyl(ctx, 0.3, 1.5, cx, 0.8, cz, METAL_DARK, Enum.Material.Metal)
+end
+
+function low.sofa(ctx, x, z, sx, sz, flip)
+	local o = orient(x, z, sx, sz, flip)
+	local fabric = rgb(86, 34, 40)
+	part(ctx, o.size(o.len, 1.2, o.wid), x, 0.7, z, rgb(40, 22, 24), Enum.Material.Fabric)
+	local bx, bz = o.pos(0, -o.wid / 2 + 0.35)
+	part(ctx, o.size(o.len, 1.8, 0.7), bx, 2.1, bz, fabric, Enum.Material.Fabric)
+	for _, u in ipairs({ -o.len / 2 + 0.35, o.len / 2 - 0.35 }) do
+		local ax, az = o.pos(u, 0)
+		part(ctx, o.size(0.7, 1, o.wid), ax, 1.7, az, fabric, Enum.Material.Fabric)
+	end
+	local seats = math.max(2, math.floor((o.len - 1.4) / 2.2 + 0.5))
+	local w = (o.len - 1.4) / seats
+	for i = 1, seats do
+		local u = -(o.len - 1.4) / 2 + w * (i - 0.5)
+		local cx, cz = o.pos(u, 0.3)
+		part(ctx, o.size(w - 0.12, 0.45, o.wid - 0.9), cx, 1.5, cz, rgb(104, 42, 48), Enum.Material.Fabric)
+	end
+end
+
+function low.table(ctx, x, z, sx, sz)
+	part(ctx, Vector3.new(sx, 0.2, sz), x, 1.5, z, rgb(24, 24, 28), Enum.Material.Glass, { Reflectance = 0.2 })
+	part(ctx, Vector3.new(sx - 0.8, 1.3, sz - 0.8), x, 0.75, z, WOOD_DARK, Enum.Material.Wood)
+	cyl(ctx, 0.5, 0.5, x - sx * 0.2, 1.85, z, rgb(214, 170, 90), Enum.Material.Metal)
+	part(ctx, Vector3.new(1, 0.08, 0.7), x + sx * 0.2, 1.64, z + 0.2, rgb(150, 40, 40), Enum.Material.SmoothPlastic)
+end
+
+function low.bench(ctx, x, z, sx, sz)
+	local o = orient(x, z, sx, sz)
+	part(ctx, o.size(o.len, 0.4, o.wid), x, 1.5, z, rgb(40, 40, 46), Enum.Material.Fabric)
+	for _, u in ipairs({ -o.len / 2 + 0.5, o.len / 2 - 0.5 }) do
+		local px, pz = o.pos(u, 0)
+		part(ctx, o.size(0.3, 1.3, o.wid - 0.4), px, 0.65, pz, rgb(214, 170, 90), Enum.Material.Metal)
+	end
+end
+
+function low.pallet(ctx, x, z, sx, sz)
+	part(ctx, Vector3.new(sx, 0.4, sz), x, 0.2, z, WOOD, Enum.Material.WoodPlanks)
+	for i = -1, 1 do
+		local tone = rng:NextNumber(0.85, 1.1)
+		part(ctx, Vector3.new(sx * 0.28, 1.6, sz * 0.8), x + i * sx * 0.31, 1.2, z,
+			rgb(150 * tone, 130 * tone, 96 * tone), Enum.Material.Fabric)
+	end
+	part(ctx, Vector3.new(sx * 0.9, 0.1, 0.25), x, 2.05, z, rgb(30, 30, 30), Enum.Material.Fabric)
+end
+
+function low.console(ctx, x, z, sx, sz, flip)
+	local o = orient(x, z, sx, sz, flip)
+	part(ctx, o.size(o.len, 2.5, o.wid), x, 1.25, z, rgb(34, 36, 44), Enum.Material.Metal)
+	part(ctx, o.size(o.len + 0.2, 0.15, o.wid + 0.2), x, 2.55, z, rgb(20, 21, 26), Enum.Material.SmoothPlastic)
+	local count = math.max(2, math.floor(o.len / 2.4))
+	for i = 1, count do
+		local u = -o.len / 2 + o.len * (i - 0.5) / count
+		local px, pz = o.pos(u, -o.wid * 0.25)
+		part(ctx, o.size(1.9, 1.3, 0.12), px, 3.4, pz, METAL_DARK, Enum.Material.SmoothPlastic)
+		local tint = (i % 2 == 0) and rgb(90, 255, 160) or rgb(90, 190, 255)
+		part(ctx, o.size(1.7, 1.1, 0.14), px, 3.4, pz, tint, Enum.Material.Neon)
+		local kx, kz = o.pos(u, o.wid * 0.2)
+		part(ctx, o.size(1.3, 0.06, 0.5), kx, 2.66, kz, rgb(12, 12, 14), Enum.Material.SmoothPlastic)
+	end
+end
+
+function low.lounger(ctx, x, z, sx, sz)
+	local o = orient(x, z, sx, sz)
+	part(ctx, o.size(o.len, 0.4, o.wid), x, 1, z, rgb(226, 222, 212), Enum.Material.Fabric)
+	local hx, hz = o.pos(-o.len / 2 + 0.9, 0)
+	part(ctx, o.size(1.8, 0.4, o.wid), hx, 1.6, hz, rgb(226, 222, 212), Enum.Material.Fabric)
+	part(ctx, o.size(o.len - 0.4, 0.8, o.wid - 0.4), x, 0.4, z, WOOD_DARK, Enum.Material.Wood)
+end
+
+---------------------------------------------------------------------------
+-- Public
+---------------------------------------------------------------------------
+function Props.buildTall(ctx, kind, x, z, sx, sz, flip)
+	local builder = tall[kind] or tall.crates
+	builder(ctx, x, z, sx, sz, flip)
+end
+
+function Props.buildLow(ctx, kind, x, z, sx, sz, flip)
+	local builder = low[kind] or low.table
+	builder(ctx, x, z, sx, sz, flip)
+end
+
+-- A floor lamp. Returns the glowing shade and its light so the server can switch it off.
+function Props.lamp(ctx, x, z, radius)
+	cyl(ctx, 1.6, 0.2, x, 0.1, z, METAL_DARK, Enum.Material.Metal)
+	cyl(ctx, 0.22, 6, x, 3.1, z, rgb(214, 170, 90), Enum.Material.Metal)
+	local shade = cyl(ctx, 2.1, 1.3, x, 6.6, z, rgb(255, 214, 150), Enum.Material.Neon)
+	cyl(ctx, 2.25, 0.12, x, 7.3, z, METAL_DARK, Enum.Material.Metal)
+	local light = Instance.new("PointLight")
+	light.Range = radius + 6
+	light.Brightness = 1.7
+	light.Color = rgb(255, 214, 150)
+	light.Shadows = true
+	light.Parent = shade
+	return shade, light
+end
+
+function Props.fuseBox(ctx, x, z)
+	part(ctx, Vector3.new(1.1, 4.2, 3.2), x, 3, z, rgb(210, 172, 40), Enum.Material.Metal)
+	part(ctx, Vector3.new(0.1, 3.4, 2.4), x - 0.6, 3, z, rgb(60, 60, 64), Enum.Material.Metal)
+	for i = -1, 1 do
+		part(ctx, Vector3.new(0.12, 0.3, 2.4), x - 0.62, 3 + i * 1.2, z, rgb(20, 20, 20), Enum.Material.SmoothPlastic)
+	end
+	local lamp = part(ctx, Vector3.new(0.15, 0.3, 0.3), x - 0.66, 4.7, z + 0.8, rgb(90, 255, 120), Enum.Material.Neon)
+	cyl(ctx, 0.3, 2.4, x, 6.2, z, rgb(80, 82, 88), Enum.Material.Metal)
+	return lamp
+end
+
+-- Dark towers with lit windows around and below the penthouse, so the edges of the map aren't empty.
+function Props.skyline(ctx, halfWidth, halfDepth)
+	part(ctx, Vector3.new(900, 2, 800), 0, -160, 0, rgb(8, 9, 14), Enum.Material.Asphalt)
+	for i = -3, 3 do
+		part(ctx, Vector3.new(900, 0.3, 3), 0, -158.8, i * 90, rgb(255, 160, 70), Enum.Material.Neon, { Transparency = 0.3 })
+		part(ctx, Vector3.new(3, 0.3, 800), i * 110, -158.8, 0, rgb(255, 160, 70), Enum.Material.Neon, { Transparency = 0.3 })
+	end
+	local built = 0
+	local tries = 0
+	while built < 64 and tries < 400 do
+		tries = tries + 1
+		local x = rng:NextNumber(-300, 300)
+		local z = rng:NextNumber(-260, 260)
+		if math.abs(x) > halfWidth + 24 or math.abs(z) > halfDepth + 24 then
+			built = built + 1
+			local w = rng:NextNumber(26, 54)
+			local d = rng:NextNumber(26, 54)
+			local top = -rng:NextNumber(10, 90)
+			local height = 160 + top
+			local tone = rng:NextNumber(0.8, 1.3)
+			part(ctx, Vector3.new(w, height, d), x, top - height / 2, z, rgb(20 * tone, 22 * tone, 30 * tone),
+				Enum.Material.Concrete)
+			-- roof details you see from above
+			part(ctx, Vector3.new(w - 3, 0.6, d - 3), x, top + 0.3, z, rgb(14, 15, 20), Enum.Material.Concrete)
+			part(ctx, Vector3.new(w * 0.25, 3, d * 0.2), x + w * 0.2, top + 1.5, z - d * 0.2, rgb(40, 42, 50), Enum.Material.Metal)
+			if rng:NextNumber() < 0.5 then
+				local glow = (rng:NextNumber() < 0.5) and rgb(255, 70, 90) or rgb(80, 200, 255)
+				part(ctx, Vector3.new(w * 0.5, 0.3, 0.6), x - w * 0.1, top + 0.8, z + d * 0.3, glow, Enum.Material.Neon)
+			end
+			if rng:NextNumber() < 0.4 then
+				ball(ctx, 1.2, x - w * 0.4, top + 4, z - d * 0.4, rgb(255, 40, 40), Enum.Material.Neon)
+			end
+			-- window bands on the side facing the camera
+			for band = 1, 3 do
+				local warm = rng:NextNumber() < 0.7
+				part(ctx, Vector3.new(w * rng:NextNumber(0.4, 0.85), 1.2, 0.3), x, top - band * rng:NextNumber(7, 11), z + d / 2,
+					warm and rgb(255, 206, 130) or rgb(140, 200, 255), Enum.Material.Neon, { Transparency = 0.2 })
+			end
+		end
+	end
+end
+
+return Props
+]]></ProtectedString></Properties></Item>
 </Item>
-<Item class="StarterPlayer" referent="RBX9"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX8"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX6"><Properties><string name="Name">StealthClient</string><ProtectedString name="Source"><![CDATA[-- StealthClient (LocalScript, goes in StarterPlayer > StarterPlayerScripts)
+<Item class="StarterPlayer" referent="RBX10"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX9"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX7"><Properties><string name="Name">StealthClient</string><ProtectedString name="Source"><![CDATA[-- StealthClient (LocalScript, goes in StarterPlayer > StarterPlayerScripts)
 -- What the player sees and presses: the overhead camera, guard vision cones,
 -- the HUD, the briefing and results screens, and effects. It never decides
 -- whether you were seen. The server does that.
@@ -1109,7 +1675,6 @@ local origin = level:GetAttribute("Origin")
 local FONT = Enum.Font.GothamBold
 local FONT_LIGHT = Enum.Font.Gotham
 local HALF_ANGLE = math.rad(Config.VIEW_HALF_ANGLE)
-local CONE_RAYS = 11
 
 local fxFolder = Instance.new("Folder")
 fxFolder.Name = "StealthFx"
@@ -1446,24 +2011,173 @@ for _, b in ipairs(binds) do
 end
 
 ---------------------------------------------------------------------------
--- Guard visuals: smooth bodies, vision cones, "?" and "!" markers
+-- Guard visuals: animated characters, vision cones, markers and speech
 ---------------------------------------------------------------------------
 local visuals = {}
+local rigsFolder = ReplicatedStorage:WaitForChild("StealthRigs", 10)
+local CONE_SEGMENTS = 14
+local CONE_THICKNESS = 0.04
+-- Roblox's own default R15 animations
+local ANIMATIONS = {
+	idle = "rbxassetid://507766388",
+	walk = "rbxassetid://507777826",
+	run = "rbxassetid://507767714",
+}
+
+-- Welds an extra piece (cap, vest, tie...) onto part of a character.
+local function attach(rig, limbName, size, offset, color, material, cylinder)
+	local limb = rig:FindFirstChild(limbName)
+	if not limb then
+		return nil
+	end
+	local p = make("Part", {
+		Size = size, Color = color, Material = material or Enum.Material.SmoothPlastic,
+		CanCollide = false, CanQuery = false, CanTouch = false, Massless = true,
+		TopSurface = Enum.SurfaceType.Smooth, BottomSurface = Enum.SurfaceType.Smooth,
+		CFrame = limb.CFrame * offset,
+	}, rig)
+	pcall(function()
+		p.CollisionGroup = "StealthGhost"
+	end)
+	if cylinder then
+		p.Shape = Enum.PartType.Cylinder
+	end
+	make("WeldConstraint", { Part0 = limb, Part1 = p }, p)
+	return p
+end
+
+local function dressRig(rig, isTarget)
+	local torso = rig:FindFirstChild("UpperTorso")
+	local hips = rig:FindFirstChild("LowerTorso")
+	local head = rig:FindFirstChild("Head")
+	if not (torso and head) then
+		return
+	end
+	local front = -(torso.Size.Z / 2)
+	local headWidth = math.min(head.Size.X, head.Size.Z) + 0.2
+	if isTarget then
+		-- white shirt, gold tie, slick hair
+		attach(rig, "UpperTorso", Vector3.new(0.62, torso.Size.Y * 0.82, 0.04), CFrame.new(0, 0.05, front - 0.02),
+			Color3.fromRGB(238, 236, 228))
+		attach(rig, "UpperTorso", Vector3.new(0.22, torso.Size.Y * 0.74, 0.05), CFrame.new(0, 0.02, front - 0.05),
+			Color3.fromRGB(255, 200, 60), Enum.Material.Neon)
+		attach(rig, "Head", Vector3.new(headWidth, 0.32, headWidth), CFrame.new(0, head.Size.Y / 2 + 0.06, 0.05),
+			Color3.fromRGB(38, 28, 22))
+	else
+		-- dark vest with a chest light, belt, and a cap
+		attach(rig, "UpperTorso", torso.Size + Vector3.new(0.14, 0.04, 0.16), CFrame.new(),
+			Color3.fromRGB(20, 22, 30), Enum.Material.Fabric)
+		attach(rig, "UpperTorso", Vector3.new(0.6, 0.14, 0.06), CFrame.new(0.32, 0.28, front - 0.1),
+			Color3.fromRGB(90, 220, 255), Enum.Material.Neon)
+		if hips then
+			attach(rig, "LowerTorso", Vector3.new(hips.Size.X + 0.14, 0.22, hips.Size.Z + 0.16),
+				CFrame.new(0, hips.Size.Y / 2 - 0.1, 0), Color3.fromRGB(10, 10, 12))
+			attach(rig, "LowerTorso", Vector3.new(0.3, 0.2, 0.06),
+				CFrame.new(0, hips.Size.Y / 2 - 0.1, -(hips.Size.Z / 2 + 0.1)), Color3.fromRGB(214, 170, 90), Enum.Material.Metal)
+		end
+		attach(rig, "Head", Vector3.new(0.4, headWidth, headWidth),
+			CFrame.new(0, head.Size.Y / 2 + 0.1, 0) * CFrame.Angles(0, 0, math.rad(90)),
+			Color3.fromRGB(22, 28, 48), Enum.Material.Fabric, true)
+		attach(rig, "Head", Vector3.new(headWidth * 0.9, 0.08, 0.5),
+			CFrame.new(0, head.Size.Y / 2 - 0.04, -(headWidth / 2 + 0.1)), Color3.fromRGB(22, 28, 48), Enum.Material.Fabric)
+	end
+end
+
+-- Returns the character model, its animation tracks, and how much higher than the
+-- server's Root its middle sits.
+local function buildRig(isTarget, cf)
+	local template = rigsFolder and rigsFolder:FindFirstChild(isTarget and "TargetRig" or "GuardRig")
+	if template then
+		local rig = template:Clone()
+		local hum = rig:FindFirstChildOfClass("Humanoid")
+		local hrp = rig:FindFirstChild("HumanoidRootPart")
+		if hum and hrp then
+			for _, d in ipairs(rig:GetDescendants()) do
+				if d:IsA("BasePart") then
+					d.CanCollide = false
+					d.CanQuery = false
+					d.CanTouch = false
+					pcall(function()
+						d.CollisionGroup = "StealthGhost"
+					end)
+				end
+			end
+			hrp.Anchored = true
+			hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+			hum.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+			pcall(function()
+				hum.EvaluateStateMachine = false
+			end)
+			rig.PrimaryPart = hrp
+			rig:PivotTo(cf)
+			rig.Parent = fxFolder
+			pcall(dressRig, rig, isTarget)
+
+			local tracks = {}
+			pcall(function()
+				local animator = hum:FindFirstChildOfClass("Animator") or make("Animator", {}, hum)
+				for name, id in pairs(ANIMATIONS) do
+					local animation = Instance.new("Animation")
+					animation.AnimationId = id
+					local track = animator:LoadAnimation(animation)
+					track.Looped = true
+					track.Priority = (name == "idle") and Enum.AnimationPriority.Idle or Enum.AnimationPriority.Movement
+					tracks[name] = track
+				end
+			end)
+			return rig, tracks, (hum.HipHeight + hrp.Size.Y / 2) - 3
+		end
+		rig:Destroy()
+	end
+
+	-- Fallback if the character rigs could not be made: a simple block figure.
+	local rig = Instance.new("Model")
+	local suit = isTarget and Color3.fromRGB(150, 25, 35) or Color3.fromRGB(34, 40, 62)
+	local function piece(size, offset, color, material)
+		return make("Part", {
+			Anchored = true, CanCollide = false, CanQuery = false, CanTouch = false, Size = size,
+			CFrame = cf * CFrame.new(offset), Color = color, Material = material or Enum.Material.SmoothPlastic,
+		}, rig)
+	end
+	rig.PrimaryPart = piece(Vector3.new(2, 2, 1), Vector3.new(0, 0, 0), suit)
+	piece(Vector3.new(1.8, 2, 0.9), Vector3.new(0, -2, 0), Color3.fromRGB(20, 20, 26))
+	piece(Vector3.new(1.2, 1.2, 1.2), Vector3.new(0, 1.6, 0), Color3.fromRGB(226, 188, 160))
+	piece(Vector3.new(1, 0.25, 0.2), Vector3.new(0, 1.7, -0.6), Color3.fromRGB(90, 220, 255), Enum.Material.Neon)
+	rig.Parent = fxFolder
+	return rig, {}, 0
+end
 
 local function createVisual(guardModel, root)
-	local rays = {}
-	for i = 1, CONE_RAYS do
-		rays[i] = make("Part", {
-			Anchored = true, CanCollide = false, CanQuery = false, CanTouch = false, CastShadow = false,
-			Material = Enum.Material.Neon, Transparency = 0.55, Size = Vector3.new(0.3, 0.05, 1),
-		}, fxFolder)
+	local isTarget = root:GetAttribute("IsTarget") == true
+	local rig, tracks, yOffset = buildRig(isTarget, root.CFrame)
+
+	local tris = {}
+	for i = 1, CONE_SEGMENTS do
+		local pair = {}
+		for k = 1, 2 do
+			pair[k] = make("WedgePart", {
+				Anchored = true, CanCollide = false, CanQuery = false, CanTouch = false, CastShadow = false,
+				Material = Enum.Material.Neon, Transparency = 1, Size = Vector3.new(CONE_THICKNESS, 1, 1),
+				TopSurface = Enum.SurfaceType.Smooth, BottomSurface = Enum.SurfaceType.Smooth,
+			}, fxFolder)
+		end
+		tris[i] = pair
 	end
+
 	local billboard = make("BillboardGui", {
-		Adornee = root, Size = UDim2.new(0, 120, 0, 50), StudsOffset = Vector3.new(0, 5, 0), AlwaysOnTop = true,
+		Adornee = root, Size = UDim2.new(0, 260, 0, 76), StudsOffset = Vector3.new(0, 5.5, 0), AlwaysOnTop = true,
 		ResetOnSpawn = false,
 	}, player.PlayerGui)
-	local mark = label({ Size = UDim2.new(1, 0, 1, 0), TextSize = 34, TextStrokeTransparency = 0 }, billboard)
-	local v = { rays = rays, billboard = billboard, mark = mark }
+	local mark = label({ Size = UDim2.new(1, 0, 0, 40), TextSize = 34, TextStrokeTransparency = 0 }, billboard)
+	local bark = label({
+		Position = UDim2.new(0, 0, 0, 42), Size = UDim2.new(1, 0, 0, 24), Font = FONT_LIGHT, TextSize = 16,
+		TextStrokeTransparency = 0.2,
+	}, billboard)
+
+	local v = {
+		rig = rig, tracks = tracks, yOffset = yOffset, tris = tris, billboard = billboard, mark = mark, bark = bark,
+		lastRootPos = root.Position, speed = 0, anim = nil, lastState = nil, barkUntil = 0,
+	}
 	visuals[guardModel] = v
 	return v
 end
@@ -1471,41 +2185,117 @@ end
 local function destroyVisual(guardModel)
 	local v = visuals[guardModel]
 	if v then
-		for _, r in ipairs(v.rays) do
-			r:Destroy()
+		v.rig:Destroy()
+		for _, pair in ipairs(v.tris) do
+			pair[1]:Destroy()
+			pair[2]:Destroy()
 		end
 		v.billboard:Destroy()
 		visuals[guardModel] = nil
 	end
 end
 
-local function updateGuards(viewRange)
+-- Lays two wedge parts flat so together they fill the triangle a-b-c.
+local function drawTriangle(a, b, c, w1, w2)
+	local ab, ac, bc = b - a, c - a, c - b
+	local abd, acd, bcd = ab:Dot(ab), ac:Dot(ac), bc:Dot(bc)
+	if abd > acd and abd > bcd then
+		c, a = a, c
+	elseif acd > bcd and acd > abd then
+		a, b = b, a
+	end
+	ab, ac, bc = b - a, c - a, c - b
+	local cross = ac:Cross(ab)
+	if cross.Magnitude < 0.001 or bc.Magnitude < 0.001 then
+		return false
+	end
+	local right = cross.Unit
+	local up = bc:Cross(right).Unit
+	local back = bc.Unit
+	local height = math.abs(ab:Dot(up))
+	w1.Size = Vector3.new(CONE_THICKNESS, height, math.abs(ab:Dot(back)))
+	w1.CFrame = CFrame.fromMatrix((a + b) / 2, right, up, back)
+	w2.Size = Vector3.new(CONE_THICKNESS, height, math.abs(ac:Dot(back)))
+	w2.CFrame = CFrame.fromMatrix((a + c) / 2, -right, up, -back)
+	return true
+end
+
+local BARKS = {
+	chase = "HEY! Stop right there!",
+	investigate = "Huh? What was that?",
+	lost = "Lost them...",
+	nothing = "Must have been nothing.",
+}
+
+local function updateGuards(viewRange, dt)
 	for guardModel in pairs(visuals) do
 		if guardModel.Parent ~= guardsFolder then
 			destroyVisual(guardModel)
 		end
 	end
+	local now = os.clock()
 
 	for _, guardModel in ipairs(guardsFolder:GetChildren()) do
 		local root = guardModel:FindFirstChild("Root")
-		local body = guardModel:FindFirstChild("Body")
-		if root and body and body.PrimaryPart then
+		if root then
 			local v = visuals[guardModel] or createVisual(guardModel, root)
 			local down = root:GetAttribute("Down") == true
 			local state = root:GetAttribute("State")
 			local meter = root:GetAttribute("Meter") or 0
 			local isTarget = root:GetAttribute("IsTarget") == true
 
-			-- slide the body after the server's position so it moves smoothly
-			local goal = root.CFrame
+			-- slide the character after the server's position so it moves smoothly
+			local goal = root.CFrame * CFrame.new(0, v.yOffset, 0)
 			if down then
-				goal = root.CFrame * CFrame.new(0, -2.4, 0) * CFrame.Angles(-math.pi / 2, 0, 0)
+				goal = root.CFrame * CFrame.new(0, -2.5, 0) * CFrame.Angles(-math.pi / 2, 0, 0)
 			end
-			local current = body:GetPivot()
+			local current = v.rig:GetPivot()
 			if (current.Position - goal.Position).Magnitude > 20 then
-				body:PivotTo(goal)
+				v.rig:PivotTo(goal)
 			else
-				body:PivotTo(current:Lerp(goal, 0.3))
+				v.rig:PivotTo(current:Lerp(goal, math.min(1, dt * 14)))
+			end
+
+			-- pick idle / walk / run from how fast the guard is really moving
+			local moved = (root.Position - v.lastRootPos).Magnitude
+			v.lastRootPos = root.Position
+			local speedNow = (dt > 0) and (moved / dt) or 0
+			v.speed = v.speed + (speedNow - v.speed) * math.min(1, dt * 6)
+			local want = nil
+			if not down then
+				want = (v.speed > 11 and "run") or (v.speed > 1 and "walk") or "idle"
+			end
+			if want ~= v.anim then
+				if v.anim and v.tracks[v.anim] then
+					v.tracks[v.anim]:Stop(0.25)
+				end
+				if want and v.tracks[want] then
+					v.tracks[want]:Play(0.25)
+				end
+				v.anim = want
+			end
+			if v.anim == "walk" and v.tracks.walk then
+				v.tracks.walk:AdjustSpeed(math.clamp(v.speed / 9, 0.5, 1.4))
+			end
+
+			-- what the guard says when their mood changes
+			if state ~= v.lastState then
+				local line = nil
+				if state == "chase" and not isTarget then
+					line = BARKS.chase
+				elseif state == "investigate" then
+					line = BARKS.investigate
+				elseif state == "return" then
+					line = (v.lastState == "chase") and BARKS.lost or BARKS.nothing
+				end
+				if v.lastState ~= nil and line then
+					v.bark.Text = line
+					v.barkUntil = now + 2.4
+				end
+				v.lastState = state
+			end
+			if now > v.barkUntil or down then
+				v.bark.Text = ""
 			end
 
 			-- marker over the head
@@ -1525,33 +2315,160 @@ local function updateGuards(viewRange)
 			end
 			v.mark.TextSize = (v.mark.Text == "TARGET") and 16 or 34
 
-			-- vision cone: a fan of lines on the floor that stop at walls
-			local color = Color3.fromRGB(235, 240, 255)
+			-- vision cone: a see-through shape on the floor that stops at walls and cover
+			local color = Color3.fromRGB(210, 228, 255)
+			local alpha = 0.84
 			if state == "chase" then
 				color = Color3.fromRGB(255, 50, 50)
+				alpha = 0.62
 			elseif meter > 0.1 then
 				color = Color3.fromRGB(255, 200, 60):Lerp(Color3.fromRGB(255, 50, 50), meter)
+				alpha = 0.7
 			end
-			local pivot = body:GetPivot()
-			local center = Vector3.new(pivot.Position.X, origin.Y, pivot.Position.Z)
+			local pivot = v.rig:GetPivot()
+			local center = Vector3.new(pivot.Position.X, origin.Y + 0.12, pivot.Position.Z)
 			local look = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
-			for i, ray in ipairs(v.rays) do
-				if down or look.Magnitude < 0.1 then
-					ray.Transparency = 1
-				else
-					local angle = -HALF_ANGLE + (i - 1) / (CONE_RAYS - 1) * HALF_ANGLE * 2
+			local hidden = down or look.Magnitude < 0.1
+			local eye = Vector3.new(center.X, origin.Y + 4.5, center.Z)
+			local previous = nil
+			for i = 0, CONE_SEGMENTS do
+				local point = nil
+				if not hidden then
+					local angle = -HALF_ANGLE + i / CONE_SEGMENTS * HALF_ANGLE * 2
 					local dir = (CFrame.Angles(0, angle, 0) * look).Unit
-					local hit = workspace:Raycast(center + Vector3.new(0, 4.5, 0), dir * viewRange, rayParams)
-					local length = hit and hit.Distance or viewRange
-					local from = center + Vector3.new(0, 0.15, 0)
-					ray.Size = Vector3.new(0.3, 0.05, math.max(0.1, length))
-					ray.CFrame = CFrame.lookAt(from, from + dir) * CFrame.new(0, 0, -length / 2)
-					ray.Color = color
-					ray.Transparency = 0.55
+					local hit = workspace:Raycast(eye, dir * viewRange, rayParams)
+					local length = math.max(0.3, (hit and hit.Distance or viewRange) - 0.05)
+					point = center + dir * length
 				end
+				if i > 0 then
+					local pair = v.tris[i]
+					local drawn = (not hidden) and drawTriangle(center, previous, point, pair[1], pair[2])
+					for k = 1, 2 do
+						pair[k].Transparency = drawn and alpha or 1
+						pair[k].Color = color
+					end
+				end
+				previous = point
 			end
 		end
 	end
+end
+
+---------------------------------------------------------------------------
+-- Extra feedback: detection bar, red screen edges, footstep rings, target pointer
+---------------------------------------------------------------------------
+local detectBack = make("Frame", {
+	AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 92), Size = UDim2.new(0, 240, 0, 8),
+	BackgroundColor3 = Color3.fromRGB(14, 16, 24), BackgroundTransparency = 0.3, BorderSizePixel = 0, Visible = false,
+}, gui)
+make("UICorner", { CornerRadius = UDim.new(1, 0) }, detectBack)
+local detectFill = make("Frame", {
+	Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(255, 200, 60), BorderSizePixel = 0,
+}, detectBack)
+make("UICorner", { CornerRadius = UDim.new(1, 0) }, detectFill)
+
+local edgeGradients = {}
+for _, e in ipairs({
+	{ UDim2.new(0, 0, 0, 0), UDim2.new(0.2, 0, 1, 0), 0 },
+	{ UDim2.new(0.8, 0, 0, 0), UDim2.new(0.2, 0, 1, 0), 180 },
+	{ UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 0.22, 0), 90 },
+	{ UDim2.new(0, 0, 0.78, 0), UDim2.new(1, 0, 0.22, 0), 270 },
+}) do
+	local frame = make("Frame", {
+		Position = e[1], Size = e[2], BackgroundColor3 = Color3.fromRGB(255, 30, 40), BorderSizePixel = 0,
+		Active = false,
+	}, gui)
+	local gradient = make("UIGradient", { Rotation = e[3], Transparency = NumberSequence.new(1, 1) }, frame)
+	table.insert(edgeGradients, gradient)
+end
+local shownDanger = -1
+
+local pointer = label({
+	AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.new(0, 150, 0, 22), TextSize = 15, Visible = false,
+	TextStrokeTransparency = 0.2,
+})
+
+local nextStepRing = 0
+
+local function pulse(position, radius, color, time, startAlpha)
+	local p = make("Part", {
+		Anchored = true, CanCollide = false, CanQuery = false, CanTouch = false, CastShadow = false,
+		Shape = Enum.PartType.Cylinder, Material = Enum.Material.Neon, Color = color, Transparency = startAlpha,
+		Size = Vector3.new(0.1, 2, 2),
+		CFrame = CFrame.new(position.X, origin.Y + 0.18, position.Z) * CFrame.Angles(0, 0, math.rad(90)),
+	}, fxFolder)
+	TweenService:Create(p, TweenInfo.new(time), {
+		Size = Vector3.new(0.1, radius * 2, radius * 2), Transparency = 1,
+	}):Play()
+	Debris:AddItem(p, time + 0.1)
+end
+
+local function updateFeedback(active, root, isCrouched)
+	-- how close the most suspicious guard is to spotting you
+	local danger = 0
+	local targetPos = nil
+	for _, guardModel in ipairs(guardsFolder:GetChildren()) do
+		local guardRoot = guardModel:FindFirstChild("Root")
+		if guardRoot and not guardRoot:GetAttribute("Down") then
+			local meter = guardRoot:GetAttribute("Meter") or 0
+			if guardRoot:GetAttribute("State") == "chase" then
+				meter = 1
+			end
+			danger = math.max(danger, meter)
+			if guardRoot:GetAttribute("IsTarget") then
+				targetPos = guardRoot.Position
+			end
+		end
+	end
+	if not active then
+		danger = 0
+	end
+	detectBack.Visible = active and danger > 0.02
+	detectFill.Size = UDim2.new(danger, 0, 1, 0)
+	detectFill.BackgroundColor3 = Color3.fromRGB(255, 200, 60):Lerp(Color3.fromRGB(255, 50, 50), danger)
+	local rounded = math.floor(danger * 25 + 0.5) / 25
+	if rounded ~= shownDanger then
+		shownDanger = rounded
+		local edge = 1 - 0.6 * rounded * rounded
+		for _, gradient in ipairs(edgeGradients) do
+			gradient.Transparency = NumberSequence.new(edge, 1)
+		end
+	end
+
+	-- rings under your feet when your footsteps can be heard
+	if active and root and not isCrouched then
+		local vel = root.AssemblyLinearVelocity
+		if Vector3.new(vel.X, 0, vel.Z).Magnitude > 10 and os.clock() > nextStepRing then
+			nextStepRing = os.clock() + 0.45
+			pulse(root.Position, Config.NOISE_RADIUS, Color3.fromRGB(230, 235, 255), 0.5, 0.86)
+		end
+	end
+
+	-- arrow text at the screen edge toward the target (or the exit once the target is down)
+	local goalText = "TARGET"
+	if level:GetAttribute("TargetDown") == true then
+		goalText = "EXIT"
+		targetPos = origin + Vector3.new(Config.Level.exit[1], 3, Config.Level.exit[2])
+	end
+	if not (active and root and targetPos) then
+		pointer.Visible = false
+		return
+	end
+	local size = camera.ViewportSize
+	local vp, onScreen = camera:WorldToViewportPoint(targetPos)
+	if onScreen and vp.X > 70 and vp.X < size.X - 70 and vp.Y > 100 and vp.Y < size.Y - 130 then
+		pointer.Visible = false
+		return
+	end
+	local dx, dy = vp.X - size.X / 2, vp.Y - size.Y / 2
+	if vp.Z < 0 then
+		dx, dy = -dx, -dy
+	end
+	local scale = math.min(1, (size.X / 2 - 100) / math.max(1, math.abs(dx)), (size.Y / 2 - 140) / math.max(1, math.abs(dy)))
+	pointer.Position = UDim2.new(0, size.X / 2 + dx * scale, 0, size.Y / 2 + dy * scale)
+	pointer.Text = goalText .. "  " .. math.floor((targetPos - root.Position).Magnitude) .. "m"
+	pointer.TextColor3 = (goalText == "EXIT") and Color3.fromRGB(110, 255, 160) or Color3.fromRGB(255, 110, 110)
+	pointer.Visible = true
 end
 
 -- Returns the text for the [E] prompt, or "" if there is nothing to do here.
@@ -1579,7 +2496,7 @@ end
 ---------------------------------------------------------------------------
 local lastState = nil
 
-RunService.RenderStepped:Connect(function()
+RunService.RenderStepped:Connect(function(dt)
 	local state = level:GetAttribute("State")
 	local root = myRoot()
 	-- StealthMenu sets InMenu to true while the 3D main menu is open.
@@ -1614,7 +2531,8 @@ RunService.RenderStepped:Connect(function()
 	local isCrouched = level:GetAttribute("Crouching") == true
 	local viewRange = (lit and Config.VIEW_RANGE_LIT or Config.VIEW_RANGE_DARK)
 		* (isCrouched and Config.CROUCH_RANGE_MULT or 1)
-	updateGuards(viewRange)
+	updateGuards(viewRange, dt)
+	updateFeedback(state == "active", root, isCrouched)
 
 	-- HUD text
 	objectiveLabel.Text = level:GetAttribute("Objective") or ""
@@ -1759,7 +2677,7 @@ FxRemote.OnClientEvent:Connect(function(name, ...)
 	end
 end)
 ]]></ProtectedString></Properties></Item>
-<Item class="LocalScript" referent="RBX7"><Properties><string name="Name">StealthMenu</string><ProtectedString name="Source"><![CDATA[-- StealthMenu (LocalScript, goes in StarterPlayer > StarterPlayerScripts)
+<Item class="LocalScript" referent="RBX8"><Properties><string name="Name">StealthMenu</string><ProtectedString name="Source"><![CDATA[-- StealthMenu (LocalScript, goes in StarterPlayer > StarterPlayerScripts)
 -- The 3D main menu. The camera starts on a copy of your character standing at the
 -- start of a dark hallway. Picking a menu option glides the camera down the hallway
 -- to a board on the wall for that menu.
@@ -1828,6 +2746,23 @@ block("RightWall", Vector3.new(1, 13, HALL_LENGTH), S(8.5, 6, midZ), wallColor, 
 block("EndWall", Vector3.new(18, 13, 1), S(0, 6, midZ - HALL_LENGTH / 2 - 0.5), wallColor, Enum.Material.Concrete)
 block("BackWall", Vector3.new(18, 13, 1), S(0, 6, midZ + HALL_LENGTH / 2 + 0.5), wallColor, Enum.Material.Concrete)
 
+-- ribs on the walls and beams on the ceiling so the hallway isn't a plain box
+for z = 4, -128, -12 do
+	for _, x in ipairs({ -7.75, 7.75 }) do
+		-- leave the wall clear where a menu board hangs (left wall at -30 and -90, right wall at -60)
+		local boardNear = (x < 0 and (math.abs(z + 30) < 8 or math.abs(z + 90) < 8)) or (x > 0 and math.abs(z + 60) < 8)
+		if not boardNear then
+		block("WallRib", Vector3.new(0.5, 12, 1.2), S(x, 6, z), Color3.fromRGB(16, 17, 24), Enum.Material.Metal)
+		block("RibLight", Vector3.new(0.1, 7, 0.12), S(x > 0 and x - 0.3 or x + 0.3, 5.5, z), RED, Enum.Material.Neon,
+			{ CastShadow = false, Transparency = 0.35 })
+		end
+	end
+	block("CeilingBeam", Vector3.new(16, 0.6, 1.2), S(0, 11.7, z), Color3.fromRGB(16, 17, 24), Enum.Material.Metal)
+end
+-- a strip of darker polished floor down the middle, like a runner
+block("Runner", Vector3.new(6, 0.05, HALL_LENGTH - 4), S(0, 0.03, midZ), Color3.fromRGB(70, 18, 24),
+	Enum.Material.Fabric, { CastShadow = false })
+
 -- red light strips along the floor
 for _, x in ipairs({ -7.8, 7.8 }) do
 	block("FloorStrip", Vector3.new(0.2, 0.1, HALL_LENGTH), S(x, 0.06, midZ), RED, Enum.Material.Neon,
@@ -1886,6 +2821,10 @@ local function makeBoard(title, side, z)
 		view = CFrame.lookAt(S(0, 5.5, z + 13.5), S(0, 5.5, z))
 		block("BoardTrim", Vector3.new(12, 0.15, 0.3), S(0, 1.9, z + 0.05), RED, Enum.Material.Neon, { CastShadow = false })
 	end
+	-- metal frame around the board
+	local long = (side == "end") and Vector3.new(12.6, 0.3, 0.5) or Vector3.new(0.5, 0.3, 12.6)
+	block("BoardFrame", long, part.Position + Vector3.new(0, 3.65, 0), Color3.fromRGB(60, 62, 74), Enum.Material.Metal)
+	block("BoardFrame", long, part.Position - Vector3.new(0, 3.65, 0), Color3.fromRGB(60, 62, 74), Enum.Material.Metal)
 	local surface = make("SurfaceGui", {
 		Name = "Menu_" .. title, Adornee = part, Face = face, LightInfluence = 0, ResetOnSpawn = false,
 		SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud, PixelsPerStud = 50,

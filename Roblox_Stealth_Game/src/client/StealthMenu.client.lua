@@ -67,6 +67,23 @@ block("RightWall", Vector3.new(1, 13, HALL_LENGTH), S(8.5, 6, midZ), wallColor, 
 block("EndWall", Vector3.new(18, 13, 1), S(0, 6, midZ - HALL_LENGTH / 2 - 0.5), wallColor, Enum.Material.Concrete)
 block("BackWall", Vector3.new(18, 13, 1), S(0, 6, midZ + HALL_LENGTH / 2 + 0.5), wallColor, Enum.Material.Concrete)
 
+-- ribs on the walls and beams on the ceiling so the hallway isn't a plain box
+for z = 4, -128, -12 do
+	for _, x in ipairs({ -7.75, 7.75 }) do
+		-- leave the wall clear where a menu board hangs (left wall at -30 and -90, right wall at -60)
+		local boardNear = (x < 0 and (math.abs(z + 30) < 8 or math.abs(z + 90) < 8)) or (x > 0 and math.abs(z + 60) < 8)
+		if not boardNear then
+		block("WallRib", Vector3.new(0.5, 12, 1.2), S(x, 6, z), Color3.fromRGB(16, 17, 24), Enum.Material.Metal)
+		block("RibLight", Vector3.new(0.1, 7, 0.12), S(x > 0 and x - 0.3 or x + 0.3, 5.5, z), RED, Enum.Material.Neon,
+			{ CastShadow = false, Transparency = 0.35 })
+		end
+	end
+	block("CeilingBeam", Vector3.new(16, 0.6, 1.2), S(0, 11.7, z), Color3.fromRGB(16, 17, 24), Enum.Material.Metal)
+end
+-- a strip of darker polished floor down the middle, like a runner
+block("Runner", Vector3.new(6, 0.05, HALL_LENGTH - 4), S(0, 0.03, midZ), Color3.fromRGB(70, 18, 24),
+	Enum.Material.Fabric, { CastShadow = false })
+
 -- red light strips along the floor
 for _, x in ipairs({ -7.8, 7.8 }) do
 	block("FloorStrip", Vector3.new(0.2, 0.1, HALL_LENGTH), S(x, 0.06, midZ), RED, Enum.Material.Neon,
@@ -125,6 +142,10 @@ local function makeBoard(title, side, z)
 		view = CFrame.lookAt(S(0, 5.5, z + 13.5), S(0, 5.5, z))
 		block("BoardTrim", Vector3.new(12, 0.15, 0.3), S(0, 1.9, z + 0.05), RED, Enum.Material.Neon, { CastShadow = false })
 	end
+	-- metal frame around the board
+	local long = (side == "end") and Vector3.new(12.6, 0.3, 0.5) or Vector3.new(0.5, 0.3, 12.6)
+	block("BoardFrame", long, part.Position + Vector3.new(0, 3.65, 0), Color3.fromRGB(60, 62, 74), Enum.Material.Metal)
+	block("BoardFrame", long, part.Position - Vector3.new(0, 3.65, 0), Color3.fromRGB(60, 62, 74), Enum.Material.Metal)
 	local surface = make("SurfaceGui", {
 		Name = "Menu_" .. title, Adornee = part, Face = face, LightInfluence = 0, ResetOnSpawn = false,
 		SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud, PixelsPerStud = 50,

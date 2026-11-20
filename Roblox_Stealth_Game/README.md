@@ -14,10 +14,13 @@ This is a first playable test with one building, "The Penthouse". Every player i
 |---|---|---|
 | ModuleScript named `StealthConfig` | ReplicatedStorage | `src/shared/StealthConfig.lua` |
 | Script named `StealthServer` | ServerScriptService | `src/server/StealthServer.server.lua` |
+| ModuleScript named `StealthProps` | ServerScriptService | `src/server/StealthProps.lua` |
 | LocalScript named `StealthClient` | StarterPlayer > StarterPlayerScripts | `src/client/StealthClient.client.lua` |
 | LocalScript named `StealthMenu` | StarterPlayer > StarterPlayerScripts | `src/client/StealthMenu.client.lua` |
 
 The names have to match exactly. `default.project.json` is there if you use Rojo.
+
+**For the best look:** in Studio, click Lighting in the Explorer and set Technology to Future. That setting can't be changed by a script, and it makes the lamps and shadows look much better.
 
 ## Main menu
 
@@ -59,9 +62,16 @@ You start with 100 points. Being spotted costs 25, a found body costs 10, each e
 
 Everything is in `StealthConfig.lua`: how far guards see, how fast they notice you, tool uses, and the whole building (walls, cover, lamps, patrol routes) as lists of numbers. After editing files in `src/`, run `python3 build_place.py` to rebuild the `.rbxlx`.
 
+## How it's put together
+
+- Guards and the target are real Roblox character rigs with the standard walk, run and idle animations, dressed with a few extra parts (cap, vest and chest light for guards, tie for the target).
+- Furniture is built in code from many small parts: crate stacks, bookshelves with books, server racks with LEDs, a bar with bottles, sofas, desks, plants and floor lamps. Each room has its own floor material and there is a city skyline around the building.
+- Vision cones are solid see-through shapes on the floor that bend around walls and cover.
+- A bar and red screen edges show how close you are to being spotted, rings under your feet show when your footsteps can be heard, and a pointer at the edge of the screen leads to the target and then the exit.
+
 ## Not done yet
 
-- Guards and furniture are plain blocks. They are stand-ins for real models.
-- No walking animations on guards and no real takedown animation.
+- Everything is made from Roblox parts. There are no custom meshes or textures, so it is a clean blocky style, not a detailed modelled one.
+- No takedown animation, no custom guard voices, and only a few built-in sounds.
 - Only one mission. Scores are not saved between sessions.
 - No disguises, lockpicks or grappling hook yet.

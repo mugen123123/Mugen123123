@@ -99,15 +99,49 @@ Config.Level = {
 		{ axis = "z", fixed = 25, from = 6, to = 40, gaps = { { 20, 28 } } },
 	},
 
-	-- Things to hide behind: { x, z, sizeX, sizeZ }
+	-- Floors: { x1, z1, x2, z2, material, { r, g, b } }
+	rooms = {
+		{ -60, -40, -10, -10, "Fabric", { 58, 30, 34 } },    -- office carpet
+		{ -10, -40, 35, -10, "WoodPlanks", { 74, 52, 38 } }, -- lounge
+		{ 35, -40, 60, -10, "Slate", { 62, 64, 72 } },       -- balcony
+		{ -60, -10, 60, 6, "Marble", { 48, 50, 58 } },       -- hallway
+		{ -60, 6, -25, 40, "Concrete", { 58, 58, 60 } },     -- storage
+		{ -25, 6, 25, 40, "Marble", { 84, 80, 76 } },        -- lobby
+		{ 25, 6, 60, 40, "DiamondPlate", { 44, 48, 56 } },   -- security
+	},
+
+	-- Rugs, just for looks: { x, z, sizeX, sizeZ, { r, g, b } }
+	rugs = {
+		{ 0, -2, 108, 5, { 96, 26, 34 } },
+		{ -45, -27, 22, 9, { 30, 34, 52 } },
+		{ 15, -19, 16, 8, { 40, 44, 60 } },
+		{ 0, 17, 24, 5, { 96, 26, 34 } },
+	},
+
+	-- Tall things to hide behind. Guards can't see over them: { kind, x, z, sizeX, sizeZ }
+	-- kinds: crates, pillar, reception, planter, servers, lockers, bar, screen, bookshelf, cabinet
 	cover = {
-		{ -50, 18, 6, 6 }, { -35, 34, 8, 4 },                      -- storage crates
-		{ 0, 26, 14, 3 }, { -14, 12, 3, 3 }, { 14, 12, 3, 3 }, { -18, 34, 8, 3 }, -- lobby
-		{ -20, -8, 4, 2 }, { 22, 4, 4, 2 }, { -52, 4, 4, 2 },      -- hallway planters
-		{ 50, 12, 10, 3 }, { 30, 36, 4, 6 },                       -- security
-		{ 10, -36, 16, 3 }, { 5, -20, 8, 3 }, { 25, -19, 3, 6 },   -- lounge
-		{ -45, -35, 10, 3 }, { -20, -38, 10, 2 }, { -56, -20, 3, 8 }, -- office
-		{ 56, -34, 3, 6 }, { 40, -36, 6, 3 },                      -- balcony
+		{ "crates", -50, 18, 6, 6 }, { "crates", -35, 34, 8, 4 },
+		{ "reception", 0, 26, 14, 3 }, { "pillar", -14, 12, 3, 3 }, { "pillar", 14, 12, 3, 3 },
+		{ "planter", -18, 34, 8, 3 },
+		{ "planter", -20, -8, 4, 2 }, { "planter", 22, 4, 4, 2 }, { "planter", -52, 4, 4, 2 },
+		{ "servers", 50, 12, 10, 3 }, { "lockers", 30, 36, 4, 6 },
+		{ "bar", 10, -36, 16, 3 }, { "screen", 5, -20, 8, 3 }, { "screen", 25, -19, 3, 6 },
+		{ "bookshelf", -45, -38.5, 14, 2 }, { "bookshelf", -20, -38, 10, 2 }, { "cabinet", -56, -20, 3, 8 },
+		{ "planter", 56, -34, 3, 6 }, { "planter", 40, -36, 6, 3 },
+	},
+
+	-- Low furniture. You have to walk around it, but guards see over it: { kind, x, z, sizeX, sizeZ, flip }
+	-- kinds: desk, sofa, table, bench, pallet, console, lounger
+	low = {
+		{ "desk", -45, -33.5, 9, 3 },
+		{ "sofa", -30, -36, 8, 3 },
+		{ "table", 15, -18, 5, 3 },
+		{ "sofa", 20, 36, 6, 3, true },
+		{ "bench", -21, 13, 3, 6 },
+		{ "console", 44, 34, 8, 3, true },
+		{ "pallet", -30, 14, 5, 5 },
+		{ "lounger", 55, -18, 3, 6 },
 	},
 
 	-- Lamps: { x, z }. Anything within LAMP_RADIUS of one counts as standing in light.

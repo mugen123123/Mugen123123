@@ -32,7 +32,6 @@ local origin = level:GetAttribute("Origin")
 local FONT = Enum.Font.GothamBold
 local FONT_LIGHT = Enum.Font.Gotham
 local HALF_ANGLE = math.rad(Config.VIEW_HALF_ANGLE)
-local CONE_RAYS = 11
 
 local fxFolder = Instance.new("Folder")
 fxFolder.Name = "StealthFx"
@@ -369,24 +368,173 @@ for _, b in ipairs(binds) do
 end
 
 ---------------------------------------------------------------------------
--- Guard visuals: smooth bodies, vision cones, "?" and "!" markers
+-- Guard visuals: animated characters, vision cones, markers and speech
 ---------------------------------------------------------------------------
 local visuals = {}
+local rigsFolder = ReplicatedStorage:WaitForChild("StealthRigs", 10)
+local CONE_SEGMENTS = 14
+local CONE_THICKNESS = 0.04
+-- Roblox's own default R15 animations
+local ANIMATIONS = {
+	idle = "rbxassetid://507766388",
+	walk = "rbxassetid://507777826",
+	run = "rbxassetid://507767714",
+}
+
+-- Welds an extra piece (cap, vest, tie...) onto part of a character.
+local function attach(rig, limbName, size, offset, color, material, cylinder)
+	local limb = rig:FindFirstChild(limbName)
+	if not limb then
+		return nil
+	end
+	local p = make("Part", {
+		Size = size, Color = color, Material = material or Enum.Material.SmoothPlastic,
+		CanCollide = false, CanQuery = false, CanTouch = false, Massless = true,
+		TopSurface = Enum.SurfaceType.Smooth, BottomSurface = Enum.SurfaceType.Smooth,
+		CFrame = limb.CFrame * offset,
+	}, rig)
+	pcall(function()
+		p.CollisionGroup = "StealthGhost"
+	end)
+	if cylinder then
+		p.Shape = Enum.PartType.Cylinder
+	end
+	make("WeldConstraint", { Part0 = limb, Part1 = p }, p)
+	return p
+end
+
+local function dressRig(rig, isTarget)
+	local torso = rig:FindFirstChild("UpperTorso")
+	local hips = rig:FindFirstChild("LowerTorso")
+	local head = rig:FindFirstChild("Head")
+	if not (torso and head) then
+		return
+	end
+	local front = -(torso.Size.Z / 2)
+	local headWidth = math.min(head.Size.X, head.Size.Z) + 0.2
+	if isTarget then
+		-- white shirt, gold tie, slick hair
+		attach(rig, "UpperTorso", Vector3.new(0.62, torso.Size.Y * 0.82, 0.04), CFrame.new(0, 0.05, front - 0.02),
+			Color3.fromRGB(238, 236, 228))
+		attach(rig, "UpperTorso", Vector3.new(0.22, torso.Size.Y * 0.74, 0.05), CFrame.new(0, 0.02, front - 0.05),
+			Color3.fromRGB(255, 200, 60), Enum.Material.Neon)
+		attach(rig, "Head", Vector3.new(headWidth, 0.32, headWidth), CFrame.new(0, head.Size.Y / 2 + 0.06, 0.05),
+			Color3.fromRGB(38, 28, 22))
+	else
+		-- dark vest with a chest light, belt, and a cap
+		attach(rig, "UpperTorso", torso.Size + Vector3.new(0.14, 0.04, 0.16), CFrame.new(),
+			Color3.fromRGB(20, 22, 30), Enum.Material.Fabric)
+		attach(rig, "UpperTorso", Vector3.new(0.6, 0.14, 0.06), CFrame.new(0.32, 0.28, front - 0.1),
+			Color3.fromRGB(90, 220, 255), Enum.Material.Neon)
+		if hips then
+			attach(rig, "LowerTorso", Vector3.new(hips.Size.X + 0.14, 0.22, hips.Size.Z + 0.16),
+				CFrame.new(0, hips.Size.Y / 2 - 0.1, 0), Color3.fromRGB(10, 10, 12))
+			attach(rig, "LowerTorso", Vector3.new(0.3, 0.2, 0.06),
+				CFrame.new(0, hips.Size.Y / 2 - 0.1, -(hips.Size.Z / 2 + 0.1)), Color3.fromRGB(214, 170, 90), Enum.Material.Metal)
+		end
+		attach(rig, "Head", Vector3.new(0.4, headWidth, headWidth),
+			CFrame.new(0, head.Size.Y / 2 + 0.1, 0) * CFrame.Angles(0, 0, math.rad(90)),
+			Color3.fromRGB(22, 28, 48), Enum.Material.Fabric, true)
+		attach(rig, "Head", Vector3.new(headWidth * 0.9, 0.08, 0.5),
+			CFrame.new(0, head.Size.Y / 2 - 0.04, -(headWidth / 2 + 0.1)), Color3.fromRGB(22, 28, 48), Enum.Material.Fabric)
+	end
+end
+
+-- Returns the character model, its animation tracks, and how much higher than the
+-- server's Root its middle sits.
+local function buildRig(isTarget, cf)
+	local template = rigsFolder and rigsFolder:FindFirstChild(isTarget and "TargetRig" or "GuardRig")
+	if template then
+		local rig = template:Clone()
+		local hum = rig:FindFirstChildOfClass("Humanoid")
+		local hrp = rig:FindFirstChild("HumanoidRootPart")
+		if hum and hrp then
+			for _, d in ipairs(rig:GetDescendants()) do
+				if d:IsA("BasePart") then
+					d.CanCollide = false
+					d.CanQuery = false
+					d.CanTouch = false
+					pcall(function()
+						d.CollisionGroup = "StealthGhost"
+					end)
+				end
+			end
+			hrp.Anchored = true
+			hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+			hum.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+			pcall(function()
+				hum.EvaluateStateMachine = false
+			end)
+			rig.PrimaryPart = hrp
+			rig:PivotTo(cf)
+			rig.Parent = fxFolder
+			pcall(dressRig, rig, isTarget)
+
+			local tracks = {}
+			pcall(function()
+				local animator = hum:FindFirstChildOfClass("Animator") or make("Animator", {}, hum)
+				for name, id in pairs(ANIMATIONS) do
+					local animation = Instance.new("Animation")
+					animation.AnimationId = id
+					local track = animator:LoadAnimation(animation)
+					track.Looped = true
+					track.Priority = (name == "idle") and Enum.AnimationPriority.Idle or Enum.AnimationPriority.Movement
+					tracks[name] = track
+				end
+			end)
+			return rig, tracks, (hum.HipHeight + hrp.Size.Y / 2) - 3
+		end
+		rig:Destroy()
+	end
+
+	-- Fallback if the character rigs could not be made: a simple block figure.
+	local rig = Instance.new("Model")
+	local suit = isTarget and Color3.fromRGB(150, 25, 35) or Color3.fromRGB(34, 40, 62)
+	local function piece(size, offset, color, material)
+		return make("Part", {
+			Anchored = true, CanCollide = false, CanQuery = false, CanTouch = false, Size = size,
+			CFrame = cf * CFrame.new(offset), Color = color, Material = material or Enum.Material.SmoothPlastic,
+		}, rig)
+	end
+	rig.PrimaryPart = piece(Vector3.new(2, 2, 1), Vector3.new(0, 0, 0), suit)
+	piece(Vector3.new(1.8, 2, 0.9), Vector3.new(0, -2, 0), Color3.fromRGB(20, 20, 26))
+	piece(Vector3.new(1.2, 1.2, 1.2), Vector3.new(0, 1.6, 0), Color3.fromRGB(226, 188, 160))
+	piece(Vector3.new(1, 0.25, 0.2), Vector3.new(0, 1.7, -0.6), Color3.fromRGB(90, 220, 255), Enum.Material.Neon)
+	rig.Parent = fxFolder
+	return rig, {}, 0
+end
 
 local function createVisual(guardModel, root)
-	local rays = {}
-	for i = 1, CONE_RAYS do
-		rays[i] = make("Part", {
-			Anchored = true, CanCollide = false, CanQuery = false, CanTouch = false, CastShadow = false,
-			Material = Enum.Material.Neon, Transparency = 0.55, Size = Vector3.new(0.3, 0.05, 1),
-		}, fxFolder)
+	local isTarget = root:GetAttribute("IsTarget") == true
+	local rig, tracks, yOffset = buildRig(isTarget, root.CFrame)
+
+	local tris = {}
+	for i = 1, CONE_SEGMENTS do
+		local pair = {}
+		for k = 1, 2 do
+			pair[k] = make("WedgePart", {
+				Anchored = true, CanCollide = false, CanQuery = false, CanTouch = false, CastShadow = false,
+				Material = Enum.Material.Neon, Transparency = 1, Size = Vector3.new(CONE_THICKNESS, 1, 1),
+				TopSurface = Enum.SurfaceType.Smooth, BottomSurface = Enum.SurfaceType.Smooth,
+			}, fxFolder)
+		end
+		tris[i] = pair
 	end
+
 	local billboard = make("BillboardGui", {
-		Adornee = root, Size = UDim2.new(0, 120, 0, 50), StudsOffset = Vector3.new(0, 5, 0), AlwaysOnTop = true,
+		Adornee = root, Size = UDim2.new(0, 260, 0, 76), StudsOffset = Vector3.new(0, 5.5, 0), AlwaysOnTop = true,
 		ResetOnSpawn = false,
 	}, player.PlayerGui)
-	local mark = label({ Size = UDim2.new(1, 0, 1, 0), TextSize = 34, TextStrokeTransparency = 0 }, billboard)
-	local v = { rays = rays, billboard = billboard, mark = mark }
+	local mark = label({ Size = UDim2.new(1, 0, 0, 40), TextSize = 34, TextStrokeTransparency = 0 }, billboard)
+	local bark = label({
+		Position = UDim2.new(0, 0, 0, 42), Size = UDim2.new(1, 0, 0, 24), Font = FONT_LIGHT, TextSize = 16,
+		TextStrokeTransparency = 0.2,
+	}, billboard)
+
+	local v = {
+		rig = rig, tracks = tracks, yOffset = yOffset, tris = tris, billboard = billboard, mark = mark, bark = bark,
+		lastRootPos = root.Position, speed = 0, anim = nil, lastState = nil, barkUntil = 0,
+	}
 	visuals[guardModel] = v
 	return v
 end
@@ -394,41 +542,117 @@ end
 local function destroyVisual(guardModel)
 	local v = visuals[guardModel]
 	if v then
-		for _, r in ipairs(v.rays) do
-			r:Destroy()
+		v.rig:Destroy()
+		for _, pair in ipairs(v.tris) do
+			pair[1]:Destroy()
+			pair[2]:Destroy()
 		end
 		v.billboard:Destroy()
 		visuals[guardModel] = nil
 	end
 end
 
-local function updateGuards(viewRange)
+-- Lays two wedge parts flat so together they fill the triangle a-b-c.
+local function drawTriangle(a, b, c, w1, w2)
+	local ab, ac, bc = b - a, c - a, c - b
+	local abd, acd, bcd = ab:Dot(ab), ac:Dot(ac), bc:Dot(bc)
+	if abd > acd and abd > bcd then
+		c, a = a, c
+	elseif acd > bcd and acd > abd then
+		a, b = b, a
+	end
+	ab, ac, bc = b - a, c - a, c - b
+	local cross = ac:Cross(ab)
+	if cross.Magnitude < 0.001 or bc.Magnitude < 0.001 then
+		return false
+	end
+	local right = cross.Unit
+	local up = bc:Cross(right).Unit
+	local back = bc.Unit
+	local height = math.abs(ab:Dot(up))
+	w1.Size = Vector3.new(CONE_THICKNESS, height, math.abs(ab:Dot(back)))
+	w1.CFrame = CFrame.fromMatrix((a + b) / 2, right, up, back)
+	w2.Size = Vector3.new(CONE_THICKNESS, height, math.abs(ac:Dot(back)))
+	w2.CFrame = CFrame.fromMatrix((a + c) / 2, -right, up, -back)
+	return true
+end
+
+local BARKS = {
+	chase = "HEY! Stop right there!",
+	investigate = "Huh? What was that?",
+	lost = "Lost them...",
+	nothing = "Must have been nothing.",
+}
+
+local function updateGuards(viewRange, dt)
 	for guardModel in pairs(visuals) do
 		if guardModel.Parent ~= guardsFolder then
 			destroyVisual(guardModel)
 		end
 	end
+	local now = os.clock()
 
 	for _, guardModel in ipairs(guardsFolder:GetChildren()) do
 		local root = guardModel:FindFirstChild("Root")
-		local body = guardModel:FindFirstChild("Body")
-		if root and body and body.PrimaryPart then
+		if root then
 			local v = visuals[guardModel] or createVisual(guardModel, root)
 			local down = root:GetAttribute("Down") == true
 			local state = root:GetAttribute("State")
 			local meter = root:GetAttribute("Meter") or 0
 			local isTarget = root:GetAttribute("IsTarget") == true
 
-			-- slide the body after the server's position so it moves smoothly
-			local goal = root.CFrame
+			-- slide the character after the server's position so it moves smoothly
+			local goal = root.CFrame * CFrame.new(0, v.yOffset, 0)
 			if down then
-				goal = root.CFrame * CFrame.new(0, -2.4, 0) * CFrame.Angles(-math.pi / 2, 0, 0)
+				goal = root.CFrame * CFrame.new(0, -2.5, 0) * CFrame.Angles(-math.pi / 2, 0, 0)
 			end
-			local current = body:GetPivot()
+			local current = v.rig:GetPivot()
 			if (current.Position - goal.Position).Magnitude > 20 then
-				body:PivotTo(goal)
+				v.rig:PivotTo(goal)
 			else
-				body:PivotTo(current:Lerp(goal, 0.3))
+				v.rig:PivotTo(current:Lerp(goal, math.min(1, dt * 14)))
+			end
+
+			-- pick idle / walk / run from how fast the guard is really moving
+			local moved = (root.Position - v.lastRootPos).Magnitude
+			v.lastRootPos = root.Position
+			local speedNow = (dt > 0) and (moved / dt) or 0
+			v.speed = v.speed + (speedNow - v.speed) * math.min(1, dt * 6)
+			local want = nil
+			if not down then
+				want = (v.speed > 11 and "run") or (v.speed > 1 and "walk") or "idle"
+			end
+			if want ~= v.anim then
+				if v.anim and v.tracks[v.anim] then
+					v.tracks[v.anim]:Stop(0.25)
+				end
+				if want and v.tracks[want] then
+					v.tracks[want]:Play(0.25)
+				end
+				v.anim = want
+			end
+			if v.anim == "walk" and v.tracks.walk then
+				v.tracks.walk:AdjustSpeed(math.clamp(v.speed / 9, 0.5, 1.4))
+			end
+
+			-- what the guard says when their mood changes
+			if state ~= v.lastState then
+				local line = nil
+				if state == "chase" and not isTarget then
+					line = BARKS.chase
+				elseif state == "investigate" then
+					line = BARKS.investigate
+				elseif state == "return" then
+					line = (v.lastState == "chase") and BARKS.lost or BARKS.nothing
+				end
+				if v.lastState ~= nil and line then
+					v.bark.Text = line
+					v.barkUntil = now + 2.4
+				end
+				v.lastState = state
+			end
+			if now > v.barkUntil or down then
+				v.bark.Text = ""
 			end
 
 			-- marker over the head
@@ -448,33 +672,160 @@ local function updateGuards(viewRange)
 			end
 			v.mark.TextSize = (v.mark.Text == "TARGET") and 16 or 34
 
-			-- vision cone: a fan of lines on the floor that stop at walls
-			local color = Color3.fromRGB(235, 240, 255)
+			-- vision cone: a see-through shape on the floor that stops at walls and cover
+			local color = Color3.fromRGB(210, 228, 255)
+			local alpha = 0.84
 			if state == "chase" then
 				color = Color3.fromRGB(255, 50, 50)
+				alpha = 0.62
 			elseif meter > 0.1 then
 				color = Color3.fromRGB(255, 200, 60):Lerp(Color3.fromRGB(255, 50, 50), meter)
+				alpha = 0.7
 			end
-			local pivot = body:GetPivot()
-			local center = Vector3.new(pivot.Position.X, origin.Y, pivot.Position.Z)
+			local pivot = v.rig:GetPivot()
+			local center = Vector3.new(pivot.Position.X, origin.Y + 0.12, pivot.Position.Z)
 			local look = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
-			for i, ray in ipairs(v.rays) do
-				if down or look.Magnitude < 0.1 then
-					ray.Transparency = 1
-				else
-					local angle = -HALF_ANGLE + (i - 1) / (CONE_RAYS - 1) * HALF_ANGLE * 2
+			local hidden = down or look.Magnitude < 0.1
+			local eye = Vector3.new(center.X, origin.Y + 4.5, center.Z)
+			local previous = nil
+			for i = 0, CONE_SEGMENTS do
+				local point = nil
+				if not hidden then
+					local angle = -HALF_ANGLE + i / CONE_SEGMENTS * HALF_ANGLE * 2
 					local dir = (CFrame.Angles(0, angle, 0) * look).Unit
-					local hit = workspace:Raycast(center + Vector3.new(0, 4.5, 0), dir * viewRange, rayParams)
-					local length = hit and hit.Distance or viewRange
-					local from = center + Vector3.new(0, 0.15, 0)
-					ray.Size = Vector3.new(0.3, 0.05, math.max(0.1, length))
-					ray.CFrame = CFrame.lookAt(from, from + dir) * CFrame.new(0, 0, -length / 2)
-					ray.Color = color
-					ray.Transparency = 0.55
+					local hit = workspace:Raycast(eye, dir * viewRange, rayParams)
+					local length = math.max(0.3, (hit and hit.Distance or viewRange) - 0.05)
+					point = center + dir * length
 				end
+				if i > 0 then
+					local pair = v.tris[i]
+					local drawn = (not hidden) and drawTriangle(center, previous, point, pair[1], pair[2])
+					for k = 1, 2 do
+						pair[k].Transparency = drawn and alpha or 1
+						pair[k].Color = color
+					end
+				end
+				previous = point
 			end
 		end
 	end
+end
+
+---------------------------------------------------------------------------
+-- Extra feedback: detection bar, red screen edges, footstep rings, target pointer
+---------------------------------------------------------------------------
+local detectBack = make("Frame", {
+	AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 92), Size = UDim2.new(0, 240, 0, 8),
+	BackgroundColor3 = Color3.fromRGB(14, 16, 24), BackgroundTransparency = 0.3, BorderSizePixel = 0, Visible = false,
+}, gui)
+make("UICorner", { CornerRadius = UDim.new(1, 0) }, detectBack)
+local detectFill = make("Frame", {
+	Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(255, 200, 60), BorderSizePixel = 0,
+}, detectBack)
+make("UICorner", { CornerRadius = UDim.new(1, 0) }, detectFill)
+
+local edgeGradients = {}
+for _, e in ipairs({
+	{ UDim2.new(0, 0, 0, 0), UDim2.new(0.2, 0, 1, 0), 0 },
+	{ UDim2.new(0.8, 0, 0, 0), UDim2.new(0.2, 0, 1, 0), 180 },
+	{ UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 0.22, 0), 90 },
+	{ UDim2.new(0, 0, 0.78, 0), UDim2.new(1, 0, 0.22, 0), 270 },
+}) do
+	local frame = make("Frame", {
+		Position = e[1], Size = e[2], BackgroundColor3 = Color3.fromRGB(255, 30, 40), BorderSizePixel = 0,
+		Active = false,
+	}, gui)
+	local gradient = make("UIGradient", { Rotation = e[3], Transparency = NumberSequence.new(1, 1) }, frame)
+	table.insert(edgeGradients, gradient)
+end
+local shownDanger = -1
+
+local pointer = label({
+	AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.new(0, 150, 0, 22), TextSize = 15, Visible = false,
+	TextStrokeTransparency = 0.2,
+})
+
+local nextStepRing = 0
+
+local function pulse(position, radius, color, time, startAlpha)
+	local p = make("Part", {
+		Anchored = true, CanCollide = false, CanQuery = false, CanTouch = false, CastShadow = false,
+		Shape = Enum.PartType.Cylinder, Material = Enum.Material.Neon, Color = color, Transparency = startAlpha,
+		Size = Vector3.new(0.1, 2, 2),
+		CFrame = CFrame.new(position.X, origin.Y + 0.18, position.Z) * CFrame.Angles(0, 0, math.rad(90)),
+	}, fxFolder)
+	TweenService:Create(p, TweenInfo.new(time), {
+		Size = Vector3.new(0.1, radius * 2, radius * 2), Transparency = 1,
+	}):Play()
+	Debris:AddItem(p, time + 0.1)
+end
+
+local function updateFeedback(active, root, isCrouched)
+	-- how close the most suspicious guard is to spotting you
+	local danger = 0
+	local targetPos = nil
+	for _, guardModel in ipairs(guardsFolder:GetChildren()) do
+		local guardRoot = guardModel:FindFirstChild("Root")
+		if guardRoot and not guardRoot:GetAttribute("Down") then
+			local meter = guardRoot:GetAttribute("Meter") or 0
+			if guardRoot:GetAttribute("State") == "chase" then
+				meter = 1
+			end
+			danger = math.max(danger, meter)
+			if guardRoot:GetAttribute("IsTarget") then
+				targetPos = guardRoot.Position
+			end
+		end
+	end
+	if not active then
+		danger = 0
+	end
+	detectBack.Visible = active and danger > 0.02
+	detectFill.Size = UDim2.new(danger, 0, 1, 0)
+	detectFill.BackgroundColor3 = Color3.fromRGB(255, 200, 60):Lerp(Color3.fromRGB(255, 50, 50), danger)
+	local rounded = math.floor(danger * 25 + 0.5) / 25
+	if rounded ~= shownDanger then
+		shownDanger = rounded
+		local edge = 1 - 0.6 * rounded * rounded
+		for _, gradient in ipairs(edgeGradients) do
+			gradient.Transparency = NumberSequence.new(edge, 1)
+		end
+	end
+
+	-- rings under your feet when your footsteps can be heard
+	if active and root and not isCrouched then
+		local vel = root.AssemblyLinearVelocity
+		if Vector3.new(vel.X, 0, vel.Z).Magnitude > 10 and os.clock() > nextStepRing then
+			nextStepRing = os.clock() + 0.45
+			pulse(root.Position, Config.NOISE_RADIUS, Color3.fromRGB(230, 235, 255), 0.5, 0.86)
+		end
+	end
+
+	-- arrow text at the screen edge toward the target (or the exit once the target is down)
+	local goalText = "TARGET"
+	if level:GetAttribute("TargetDown") == true then
+		goalText = "EXIT"
+		targetPos = origin + Vector3.new(Config.Level.exit[1], 3, Config.Level.exit[2])
+	end
+	if not (active and root and targetPos) then
+		pointer.Visible = false
+		return
+	end
+	local size = camera.ViewportSize
+	local vp, onScreen = camera:WorldToViewportPoint(targetPos)
+	if onScreen and vp.X > 70 and vp.X < size.X - 70 and vp.Y > 100 and vp.Y < size.Y - 130 then
+		pointer.Visible = false
+		return
+	end
+	local dx, dy = vp.X - size.X / 2, vp.Y - size.Y / 2
+	if vp.Z < 0 then
+		dx, dy = -dx, -dy
+	end
+	local scale = math.min(1, (size.X / 2 - 100) / math.max(1, math.abs(dx)), (size.Y / 2 - 140) / math.max(1, math.abs(dy)))
+	pointer.Position = UDim2.new(0, size.X / 2 + dx * scale, 0, size.Y / 2 + dy * scale)
+	pointer.Text = goalText .. "  " .. math.floor((targetPos - root.Position).Magnitude) .. "m"
+	pointer.TextColor3 = (goalText == "EXIT") and Color3.fromRGB(110, 255, 160) or Color3.fromRGB(255, 110, 110)
+	pointer.Visible = true
 end
 
 -- Returns the text for the [E] prompt, or "" if there is nothing to do here.
@@ -502,7 +853,7 @@ end
 ---------------------------------------------------------------------------
 local lastState = nil
 
-RunService.RenderStepped:Connect(function()
+RunService.RenderStepped:Connect(function(dt)
 	local state = level:GetAttribute("State")
 	local root = myRoot()
 	-- StealthMenu sets InMenu to true while the 3D main menu is open.
@@ -537,7 +888,8 @@ RunService.RenderStepped:Connect(function()
 	local isCrouched = level:GetAttribute("Crouching") == true
 	local viewRange = (lit and Config.VIEW_RANGE_LIT or Config.VIEW_RANGE_DARK)
 		* (isCrouched and Config.CROUCH_RANGE_MULT or 1)
-	updateGuards(viewRange)
+	updateGuards(viewRange, dt)
+	updateFeedback(state == "active", root, isCrouched)
 
 	-- HUD text
 	objectiveLabel.Text = level:GetAttribute("Objective") or ""
