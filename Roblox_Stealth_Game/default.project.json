@@ -10,7 +10,8 @@
     },
     "StarterPlayer": {
       "StarterPlayerScripts": {
-        "StealthClient": { "$path": "src/client/StealthClient.client.lua" }
+        "StealthClient": { "$path": "src/client/StealthClient.client.lua" },
+        "StealthMenu": { "$path": "src/client/StealthMenu.client.lua" }
       }
     }
   }

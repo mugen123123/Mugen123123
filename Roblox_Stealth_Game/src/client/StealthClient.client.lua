@@ -261,14 +261,25 @@ local statsLabel = label({
 	TextColor3 = Color3.fromRGB(215, 220, 235),
 }, results)
 local retryButton = make("TextButton", {
-	AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -18),
-	Size = UDim2.new(0, 200, 0, 42), BackgroundColor3 = Color3.fromRGB(210, 45, 55), BorderSizePixel = 0,
+	AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, -98, 1, -18),
+	Size = UDim2.new(0, 184, 0, 42), BackgroundColor3 = Color3.fromRGB(210, 45, 55), BorderSizePixel = 0,
 	Font = FONT, TextSize = 20, TextColor3 = Color3.new(1, 1, 1), Text = "PLAY AGAIN",
 }, results)
 make("UICorner", { CornerRadius = UDim.new(0, 8) }, retryButton)
 retryButton.Activated:Connect(function()
 	results.Visible = false
 	RetryRemote:FireServer()
+end)
+local menuButton = make("TextButton", {
+	AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 98, 1, -18),
+	Size = UDim2.new(0, 184, 0, 42), BackgroundColor3 = Color3.fromRGB(40, 44, 62), BorderSizePixel = 0,
+	Font = FONT, TextSize = 20, TextColor3 = Color3.new(1, 1, 1), Text = "MAIN MENU",
+}, results)
+make("UICorner", { CornerRadius = UDim.new(0, 8) }, menuButton)
+menuButton.Activated:Connect(function()
+	results.Visible = false
+	RetryRemote:FireServer()
+	player:SetAttribute("InMenu", true) -- StealthMenu sees this and takes the camera back
 end)
 
 ResultRemote.OnClientEvent:Connect(function(r)
@@ -494,6 +505,9 @@ local lastState = nil
 RunService.RenderStepped:Connect(function()
 	local state = level:GetAttribute("State")
 	local root = myRoot()
+	-- StealthMenu sets InMenu to true while the 3D main menu is open.
+	local inMenu = player:GetAttribute("InMenu") == true
+	gui.Enabled = not inMenu
 
 	if state ~= lastState then
 		lastState = state
@@ -507,7 +521,7 @@ RunService.RenderStepped:Connect(function()
 	briefing.Visible = state == "briefing"
 
 	-- Camera: looks down on the building from above and behind.
-	if root then
+	if root and not inMenu then
 		camera.CameraType = Enum.CameraType.Scriptable
 		camera.FieldOfView = camera.FieldOfView + (50 - camera.FieldOfView) * 0.06
 		local focus = Vector3.new(root.Position.X, origin.Y + 2, root.Position.Z)

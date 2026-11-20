@@ -15,8 +15,13 @@ This is a first playable test with one building, "The Penthouse". Every player i
 | ModuleScript named `StealthConfig` | ReplicatedStorage | `src/shared/StealthConfig.lua` |
 | Script named `StealthServer` | ServerScriptService | `src/server/StealthServer.server.lua` |
 | LocalScript named `StealthClient` | StarterPlayer > StarterPlayerScripts | `src/client/StealthClient.client.lua` |
+| LocalScript named `StealthMenu` | StarterPlayer > StarterPlayerScripts | `src/client/StealthMenu.client.lua` |
 
 The names have to match exactly. `default.project.json` is there if you use Rojo.
+
+## Main menu
+
+The game opens on a 3D menu. The camera starts on a copy of your character at the start of a dark hallway. Each menu option glides the camera down the hallway to a board on the wall: Play (contracts), Armory, How to Play and Records. Accept Contract on the contracts board starts the mission, and Main Menu on the results screen brings you back. If you leave out the `StealthMenu` script, the game skips the menu and goes straight to the briefing.
 
 ## How to play
 

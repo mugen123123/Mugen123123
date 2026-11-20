@@ -1,4 +1,4 @@
-"""Packs the three scripts into SilentContract.rbxlx so it can be opened in Roblox Studio.
+"""Packs the scripts into SilentContract.rbxlx so it can be opened in Roblox Studio.
 Run again after editing anything in src/:  python3 build_place.py
 """
 from pathlib import Path
@@ -29,7 +29,8 @@ body = (
            item("Script", "StealthServer", source=read("src/server/StealthServer.server.lua")))
     + item("StarterPlayer", "StarterPlayer",
            item("StarterPlayerScripts", "StarterPlayerScripts",
-                item("LocalScript", "StealthClient", source=read("src/client/StealthClient.client.lua"))))
+                item("LocalScript", "StealthClient", source=read("src/client/StealthClient.client.lua"))
+                + item("LocalScript", "StealthMenu", source=read("src/client/StealthMenu.client.lua"))))
 )
 (here / "SilentContract.rbxlx").write_text(f'<roblox version="4">\n{body}</roblox>\n', encoding="utf-8")
 print("wrote SilentContract.rbxlx")
